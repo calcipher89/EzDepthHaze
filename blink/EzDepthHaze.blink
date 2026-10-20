@@ -33,6 +33,7 @@ kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
   Image<eRead, eAccessPoint, eEdgeClamped> depth;
   Image<eRead, eAccessRandom, eEdgeClamped> env;
   Image<eRead, eAccessPoint, eEdgeClamped> shafts;
+  Image<eRead, eAccessRandom, eEdgeClamped> horizonLight;
   Image<eWrite> dst;
 
 param:
@@ -76,6 +77,8 @@ param:
   float shaftAmount;
   float shaftFalloff;
   float3 sunDirection;
+  int useFar;
+  float matchDistance;
 
 local:
   float pi;
@@ -122,6 +125,8 @@ local:
     defineParam(shaftAmount, "shaft_amount", 0.0f);
     defineParam(shaftFalloff, "shaft_falloff", 2.0f);
     defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
+    defineParam(useFar, "use_far", 0);
+    defineParam(matchDistance, "match_distance", 20000.0f);
   }
 
   void init()
@@ -134,16 +139,27 @@ local:
     return float3(exp(v.x), exp(v.y), exp(v.z));
   }
 
-  float3 envLookup(float3 d)
+  float2 latlongUV(float3 d)
   {
     float lon = atan2(d.x, -d.z) - envRotation * pi / 180.0f;
     float lat = asin(clamp(d.y, -1.0f, 1.0f));
     float u = lon / (2.0f * pi) + 0.5f;
-    u = u - floor(u);
-    float v = lat / pi + 0.5f;
-    float x = env.bounds.x1 + u * env.bounds.width() - 0.5f;
-    float y = env.bounds.y1 + v * env.bounds.height() - 0.5f;
-    float4 c = bilinear(env, x, y);
+    return float2(u - floor(u), lat / pi + 0.5f);
+  }
+
+  float3 envLookup(float3 d)
+  {
+    float2 uv = latlongUV(d);
+    float4 c = bilinear(env, env.bounds.x1 + uv.x * env.bounds.width() - 0.5f,
+                        env.bounds.y1 + uv.y * env.bounds.height() - 0.5f);
+    return float3(c.x, c.y, c.z);
+  }
+
+  float3 horizonLookup(float3 d)
+  {
+    float2 uv = latlongUV(d);
+    float4 c = bilinear(horizonLight, horizonLight.bounds.x1 + uv.x * horizonLight.bounds.width() - 0.5f,
+                        horizonLight.bounds.y1 + uv.y * horizonLight.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
   }
 
@@ -248,6 +264,10 @@ local:
     float s = min(hazeStart, dist);
     float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;
     light *= hazeColorGain;
+    // Haze far away gets the atmosphere's own sky light: horizonLight holds, per direction,
+    // its sky light per unit of haze divided by the haze colour (held at the horizon below
+    // it). Blended in over matchDistance, so distant terrain fades into the sky behind it.
+    float3 farLight = useFar != 0 ? light * horizonLookup(dir) : light;
 
     // Light shafts: where the line to the sun crosses terrain (shafts input from
     // EzShafts.blink), the haze gets less sunlight. Only the part of the sky around the sun
@@ -258,7 +278,9 @@ local:
       float3 sunWorld = float3(sd.x * cos(a) + sd.z * sin(a), sd.y, -sd.x * sin(a) + sd.z * cos(a));
       float near = pow(max(dot(dir, sunWorld), 0.0f), shaftFalloff);
       float visibility = shafts().x;
-      light *= max(1.0f - shaftAmount * near * (1.0f - visibility), 0.0f);
+      float shade = max(1.0f - shaftAmount * near * (1.0f - visibility), 0.0f);
+      light *= shade;
+      farLight *= shade;
     }
 
     float3 transmittance;
@@ -268,6 +290,21 @@ local:
       float path = heightPath(dir.y, s, dist);
       transmittance = exp3(-hazeDensity * (hazeAmount * path));
       inscatter = light * (float3(1.0f) - transmittance);
+      if (useFar != 0) {
+        // Same haze, but in 16 exact slabs so the light can change with distance.
+        float3 slabT = float3(1.0f);
+        inscatter = float3(0.0f);
+        float t0 = s;
+        for (int i = 1; i <= 16; i++) {
+          float f = i / 16.0f;
+          float t1 = s + (dist - s) * f * f;
+          float3 stepT = exp3(-hazeDensity * (hazeAmount * heightPath(dir.y, t0, t1)));
+          float w = 1.0f - exp(-0.5f * (t0 + t1) / matchDistance);
+          inscatter += slabT * (float3(1.0f) - stepT) * (light + (farLight - light) * w);
+          slabT *= stepT;
+          t0 = t1;
+        }
+      }
     } else {
       // March the ray, so the density can change along it: haze thinning with height,
       // a fog layer below fogTop, and world-space noise. Steps are packed towards the
@@ -284,13 +321,15 @@ local:
         float3 p = origin + dir * t;
         float3 sigma = density(p, origin.y) * dt;
         float3 stepT = exp3(-sigma);
-        inscatter += transmittance * (float3(1.0f) - stepT) * light;
+        float w = useFar != 0 ? 1.0f - exp(-t / matchDistance) : 0.0f;
+        inscatter += transmittance * (float3(1.0f) - stepT) * (light + (farLight - light) * w);
         transmittance *= stepT;
       }
       // Last stretch up to the surface.
       float3 p = origin + dir * (0.5f * (tPrev + dist));
       float3 stepT = exp3(-density(p, origin.y) * (dist - tPrev));
-      inscatter += transmittance * (float3(1.0f) - stepT) * light;
+      float wEnd = useFar != 0 ? 1.0f - exp(-dist / matchDistance) : 0.0f;
+      inscatter += transmittance * (float3(1.0f) - stepT) * (light + (farLight - light) * wEnd);
       transmittance *= stepT;
     }
 

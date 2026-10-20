@@ -54,6 +54,8 @@ channel of the plate and adds `haze_transmittance` and `haze_inscatter` layers.
 | sky depth | 1e7 | Depth at or beyond which a pixel counts as sky |
 | inherit from atmos | on | Take haze density, haze height and rotation from the EzAtmosScatter input |
 | haze color from | Atmos Input | The atmos lat-long, looked up per view direction, or a flat colour |
+| match horizon sky | on | Far haze takes the light of the atmos input's own sky, so distant terrain fades into the sky behind it |
+| match distance (km) | 20 | Distance over which the haze light changes from the camera's to the horizon sky's |
 | atmos layer | atmos_haze_color | Layer of the atmos input to use (rgba for a plain lat-long) |
 | haze color | (0.6, 0.65, 0.75) | Flat haze colour |
 | haze brightness | 1 | Multiplies the haze colour |
