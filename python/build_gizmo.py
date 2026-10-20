@@ -147,6 +147,23 @@ def _add_knobs(group, depth_pick, env_pick):
     add(wind, [5.0, 0.0, 0.0])
     add(*_double("noise_seed", "noise seed", 0, 100, "Changes the noise pattern.", 1.0))
 
+    add(nuke.Text_Knob("shaft_divider", "Light Shafts"))
+    add(*_double("shaft_amount", "shaft amount", 0, 1, "How much the haze darkens where mountains block "
+                 "the sun, leaving shafts of light through the gaps. Camera plates with the sun in front.", 0.0))
+    sun = nuke.XYZ_Knob("sun_direction", "sun direction")
+    sun.setTooltip("Direction towards the sun, +Y up. Taken from the atmos input's sun direction when "
+                   "inheriting (set its 'sun from' to Manual so the two agree).")
+    add(sun, [0.0, 0.1, -1.0])
+    add(*_double("shaft_length", "shaft length", 0, 1, "How far towards the sun each pixel looks, as a "
+                 "fraction of the way there.", 0.6))
+    add(*_double("shaft_decay", "shaft fade", 0.8, 1, "How quickly blockers further along count less. "
+                 "Closer to 1 gives longer shafts.", 0.97))
+    add(*_double("shaft_falloff", "shaft focus", 0.5, 16, "How tightly the shafts gather around the sun.", 2.0))
+    add(*_double("clear_distance", "shaft clear distance (km)", 1, 300, "Terrain beyond this is so hazed it "
+                 "casts no visible shadow.", 60.0))
+    shaft_quality = nuke.Enumeration_Knob("shaft_quality", "shaft quality", ["Draft (32)", "Normal (64)", "High (128)"])
+    add(shaft_quality, 1)
+
     for knob in k:
         group.addKnob(knob)
     for name, value in defaults.items():
@@ -195,6 +212,30 @@ def _link_haze(node, output):
         _link(node, "noise_wind", "parent.noise_wind.%s" % c, i)
     _link(node, "noise_time", "frame / root.fps")
     _link(node, "noise_seed", "parent.noise_seed")
+    _link(node, "shaft_amount", "parent.shaft_amount")
+    _link(node, "shaft_falloff", "parent.shaft_falloff")
+    for i, c in enumerate("xyz"):
+        _link(node, "sun_direction", ATMOS % ("sun_direction", "sun_direction.%s" % c, "parent.sun_direction.%s" % c), i)
+
+
+def _link_shafts(node):
+    _link(node, "latlong_plate", "parent.plate_type")
+    identity = ["1", "0", "0", "0", "1", "0", "0", "0", "1"]
+    for row in range(3):
+        for col in range(3):
+            _link(node, "cam_row%d" % row, CAM % ("world_matrix.%d" % (row * 4 + col), identity[row * 3 + col]), col)
+    _link(node, "focal", CAM % ("focal", "35"))
+    _link(node, "haperture", CAM % ("haperture", "36"))
+    _link(node, "vaperture", CAM % ("vaperture", "20.25"))
+    for i, c in enumerate("xyz"):
+        _link(node, "sun_direction", ATMOS % ("sun_direction", "sun_direction.%s" % c, "parent.sun_direction.%s" % c), i)
+    _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
+    _link(node, "sky_threshold", "parent.sky_threshold")
+    _link(node, "shaft_length", "parent.shaft_length")
+    _link(node, "shaft_samples", "parent.shaft_amount > 0 ? (parent.shaft_quality==0 ? 32 : parent.shaft_quality==1 ? 64 : 128) : 0")
+    _link(node, "shaft_decay", "parent.shaft_decay")
+    _link(node, "depth_scale", "parent.depth_scale")
+    _link(node, "clear_distance", "parent.clear_distance * 1000")
 
 
 def build():
@@ -217,12 +258,19 @@ def build():
     env_pick.setInput(0, atmos)
     env_pick["in1"].setValue("atmos_haze_color")
 
+    # Screen-space shafts: how much of each pixel's line towards the sun is open sky.
+    shafts = nuke.nodes.BlinkScript(name="Shafts", xpos=300, ypos=-140)
+    shafts.setInput(0, depth_pick)
+    _load_kernel(shafts, "EzShafts.blink")
+    _link_shafts(shafts)
+
     kernels = []
     for i, (name, output) in enumerate((("Haze", 0), ("Transmittance", 1))):
         node = nuke.nodes.BlinkScript(name=name, xpos=150 * i, ypos=-80)
         node.setInput(0, plate)
         node.setInput(1, depth_pick)
         node.setInput(2, env_pick)
+        node.setInput(3, shafts)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)
         kernels.append(node)

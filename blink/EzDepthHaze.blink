@@ -18,6 +18,9 @@
 // fogSoftness above it, all modulated by 3D fBm noise fixed in world space (it drifts
 // with noiseWind over noiseTime, so it stays put when the camera moves).
 //
+// Light shafts: the `shafts` input (EzShafts.blink) says how much of the line towards the
+// sun is open sky. Where it crosses terrain, the haze near the sun gets less light.
+//
 // Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the
 // EzAtmosScatter convention (centre column looks down -Z, top row up).
 // Distances are in metres, +Y is up.
@@ -29,6 +32,7 @@ kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
   Image<eRead, eAccessPoint, eEdgeClamped> plate;
   Image<eRead, eAccessPoint, eEdgeClamped> depth;
   Image<eRead, eAccessRandom, eEdgeClamped> env;
+  Image<eRead, eAccessPoint, eEdgeClamped> shafts;
   Image<eWrite> dst;
 
 param:
@@ -69,6 +73,9 @@ param:
   float3 noiseWind;
   float noiseTime;
   float noiseSeed;
+  float shaftAmount;
+  float shaftFalloff;
+  float3 sunDirection;
 
 local:
   float pi;
@@ -112,6 +119,9 @@ local:
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
     defineParam(noiseTime, "noise_time", 0.0f);
     defineParam(noiseSeed, "noise_seed", 1.0f);
+    defineParam(shaftAmount, "shaft_amount", 0.0f);
+    defineParam(shaftFalloff, "shaft_falloff", 2.0f);
+    defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
   }
 
   void init()
@@ -229,7 +239,7 @@ local:
       dist = rawDepth > 0.0f ? planarScale / rawDepth : 0.0f;
     dist *= depthScale;
 
-    bool sky = rawDepth <= 0.0f || dist >= skyThreshold;
+    bool sky = rawDepth <= 0.0f || rawDepth >= skyThreshold;
     if (sky)
       dist = hazeSky != 0 ? skyDistance : 0.0f;
     if (maxDistance > 0.0f)
@@ -238,6 +248,18 @@ local:
     float s = min(hazeStart, dist);
     float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;
     light *= hazeColorGain;
+
+    // Light shafts: where the line to the sun crosses terrain (shafts input from
+    // EzShafts.blink), the haze gets less sunlight. Only the part of the sky around the sun
+    // is affected, more strongly closer to it.
+    if (shaftAmount > 0.0f) {
+      float a = -envRotation * pi / 180.0f;
+      float3 sd = normalize(sunDirection);
+      float3 sunWorld = float3(sd.x * cos(a) + sd.z * sin(a), sd.y, -sd.x * sin(a) + sd.z * cos(a));
+      float near = pow(max(dot(dir, sunWorld), 0.0f), shaftFalloff);
+      float visibility = shafts().x;
+      light *= max(1.0f - shaftAmount * near * (1.0f - visibility), 0.0f);
+    }
 
     float3 transmittance;
     float3 inscatter;

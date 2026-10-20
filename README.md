@@ -94,6 +94,27 @@ speed.
 | wind (m/s) | (5, 0, 0) | Drifts the noise over time |
 | noise seed | 1 | Changes the pattern |
 
+## Light shafts
+
+With *shaft amount* above 0 and the sun in front of a camera plate, each pixel looks across
+the image towards the sun and checks how much of the way is open sky. Where mountains
+block the sun, the haze near the sun gets less light; the gaps between ridges stay bright,
+so shafts of sunlight stream through them. The sun direction comes from the atmos input
+(set its *sun from* to Manual) or from *sun direction*.
+
+| Knob | Default | What it does |
+| --- | --- | --- |
+| shaft amount | 0 | How much the blocked haze darkens (0 = off) |
+| sun direction | (0, 0.1, -1) | Direction towards the sun, when not inheriting |
+| shaft length | 0.6 | How far towards the sun each pixel looks, as a fraction of the way |
+| shaft fade | 0.97 | How quickly blockers further along count less; closer to 1 gives longer shafts |
+| shaft focus | 2 | How tightly the shafts gather around the sun |
+| shaft clear distance (km) | 60 | Terrain beyond this is too hazed to cast a visible shadow |
+| shaft quality | Normal (64) | Samples along the way to the sun |
+
+This is a screen-space effect: it only knows what is in frame, and lat-long plates get no
+shafts.
+
 ## Demo
 
 `examples/DemoTerrain.blink` renders a procedural mountain range through a Nuke camera,
