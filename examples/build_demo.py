@@ -112,7 +112,7 @@ def build():
     haze.setInput(0, solid)
     haze.setInput(1, cam)
     haze.setInput(2, lit)
-    for name, value in [("haze_amount", 3.0), ("sky_handling", 1), ("sky_distance", 60.0), ("haze_mode", 1),
+    for name, value in [("haze_amount", 3.0), ("sky_handling", 1), ("sky_distance", 250.0), ("haze_mode", 1),
                         ("steps", 2), ("fog_density", 1.0), ("fog_top", 1800.0), ("fog_softness", 600.0),
                         ("noise_amount", 0.8), ("noise_size", 3000.0), ("shaft_amount", 1.0),
                         ("shaft_length", 0.8), ("shaft_falloff", 1.0)]:

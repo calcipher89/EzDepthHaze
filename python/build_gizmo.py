@@ -100,6 +100,15 @@ def _add_knobs(group, depth_pick, env_pick):
     color_from.setTooltip("Atmos Input: the colour comes from the lat-long in the 'atmos' input, looked up in "
                           "each pixel's view direction, so the sun side glows. Color: one flat colour.")
     add(color_from)
+    match = nuke.Boolean_Knob("match_horizon", "match horizon sky")
+    match.setTooltip("With an EzAtmosScatter atmos input, haze far away takes the light of that atmosphere's "
+                     "own sky (its atmos_inscatter over 1 - atmos_transmittance) instead of the light at "
+                     "camera height. At sunset the air far away gets dimmer, redder sunlight, so without "
+                     "this distant terrain fades to a haze brighter than the sky behind it.")
+    match.setFlag(nuke.STARTLINE)
+    add(match, True)
+    add(*_double("match_distance", "match distance (km)", 1, 200, "Distance over which the haze light "
+                 "changes from the camera's to the horizon sky's.", 20.0))
     env_layer = nuke.Link_Knob("atmos_layer", "atmos layer")
     env_layer.makeLink(env_pick.name(), "in1")
     env_layer.setTooltip("Layer of the atmos input to use: atmos_haze_color for EzAtmosScatter, rgba for a "
@@ -189,6 +198,8 @@ def _link_haze(node, output):
     _link(node, "haze_sky", "parent.sky_handling")
     _link(node, "sky_distance", "parent.sky_distance * 1000")
     _link(node, "use_env", "[exists parent.input2] && parent.haze_color_from==0")
+    _link(node, "use_far", "[exists parent.input2] && parent.match_horizon")
+    _link(node, "match_distance", "parent.match_distance * 1000")
     _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
     for i, c in enumerate("rgb"):
         _link(node, "haze_color", "parent.haze_color.%s" % c, i)
@@ -258,6 +269,46 @@ def build():
     env_pick.setInput(0, atmos)
     env_pick["in1"].setValue("atmos_haze_color")
 
+    # Horizon light: inscatter / (1 - transmittance) of the atmos sky, the average light along
+    # each sky ray per unit of haze. Haze far away takes this light, so distant terrain fades
+    # into the sky behind it instead of glowing brighter than it. Below the horizon the atmos
+    # rays hit the ground, so the row just above it is held downwards; a blur keeps the
+    # azimuth profile smooth.
+    sky_in = nuke.nodes.Shuffle2(name="AtmosSkyScatter", xpos=750, ypos=-200)
+    sky_in.setInput(0, atmos)
+    sky_in["in1"].setValue("atmos_inscatter")
+    sky_t = nuke.nodes.Shuffle2(name="AtmosSkyTransmittance", xpos=900, ypos=-200)
+    sky_t.setInput(0, atmos)
+    sky_t["in1"].setValue("atmos_transmittance")
+    veil = nuke.nodes.Expression(name="AtmosSkyVeil", expr0="max(1 - r, 0.02)", expr1="max(1 - g, 0.02)",
+                                 expr2="max(1 - b, 0.02)", xpos=900, ypos=-160)
+    veil.setInput(0, sky_t)
+    per_haze = nuke.nodes.Merge2(name="AtmosSkyPerHaze", operation="divide", output="rgb", xpos=750, ypos=-120)
+    per_haze.setInput(0, veil)
+    per_haze.setInput(1, sky_in)
+    # Stored as a ratio to the haze colour, so below the horizon the haze keeps following the
+    # sun's phase function and only takes on the horizon sky's dimming and reddening.
+    safe_color = nuke.nodes.Expression(name="AtmosHazeColorSafe", expr0="max(r, 1e-5)", expr1="max(g, 1e-5)",
+                                       expr2="max(b, 1e-5)", xpos=600, ypos=-160)
+    safe_color.setInput(0, env_pick)
+    ratio = nuke.nodes.Merge2(name="AtmosSkyRatio", operation="divide", output="rgb", xpos=750, ypos=-110)
+    ratio.setInput(0, safe_color)
+    ratio.setInput(1, per_haze)
+    soften = nuke.nodes.Blur(name="AtmosSkySoften", xpos=750, ypos=-100)
+    soften["size"].setValue([96, 24])
+    soften.setInput(0, ratio)
+    upper = nuke.nodes.Crop(name="AtmosSkyUpper", crop=False, xpos=750, ypos=-90)
+    upper.setInput(0, soften)
+    for i, e in enumerate(("0", "input.height / 2 + 2", "input.width", "input.height")):
+        upper["box"].setExpression(e, i)
+    grow = nuke.nodes.AdjBBox(name="AtmosSkyExtend", xpos=750, ypos=-60)
+    grow["numpixels"].setExpression("input.height")
+    grow.setInput(0, upper)
+    sky_light = nuke.nodes.Crop(name="AtmosSkyFull", crop=False, xpos=750, ypos=-30)
+    sky_light.setInput(0, grow)
+    for i, e in enumerate(("0", "0", "AtmosSkyPerHaze.width", "AtmosSkyPerHaze.height")):
+        sky_light["box"].setExpression(e, i)
+
     # Screen-space shafts: how much of each pixel's line towards the sun is open sky.
     shafts = nuke.nodes.BlinkScript(name="Shafts", xpos=300, ypos=-140)
     shafts.setInput(0, depth_pick)
@@ -270,6 +321,7 @@ def build():
         node.setInput(0, plate)
         node.setInput(1, depth_pick)
         node.setInput(2, env_pick)
+        node.setInput(4, sky_light)
         node.setInput(3, shafts)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)

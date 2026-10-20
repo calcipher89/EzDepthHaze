@@ -143,10 +143,15 @@ local:
       t += max(dy * 0.4f, 1.0f + 0.0015f * t);
     }
 
+    // Downward rays that ran out of steps before reaching the terrain still end on it,
+    // far away; otherwise they would show sky below the horizon.
+    if (!hit && dir.y < 0.0f) {
+      hit = true;
+      t = min(t, 250000.0f);
+    }
+
     if (!hit) {
-      // Rays that slip past the terrain below the horizon still see sky, not the
-      // atmosphere's dark lower half.
-      float3 c = skyLookup(normalize(float3(dir.x, max(dir.y, 0.03f), dir.z)));
+      float3 c = skyLookup(dir);
       float mu = dot(dir, sunDir);
       float disc = clamp((mu - cos(0.5f * pi / 180.0f)) / 0.00002f, 0.0f, 1.0f);
       c += sunColor * sunDiscRadiance * disc;
