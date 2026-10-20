@@ -1,0 +1,225 @@
+version 15.1 v3
+add_layer {haze_transmittance haze_transmittance.red haze_transmittance.green haze_transmittance.blue}
+add_layer {haze_inscatter haze_inscatter.red haze_inscatter.green haze_inscatter.blue}
+Gizmo {
+ name EzDepthHaze1
+ tile_color 0x6a8fa5ff
+ selected true
+ addUserKnob {20 ezdepthhaze l EzDepthHaze}
+ addUserKnob {4 view_output l "view output" t "What the main rgb shows. The transmittance and in-scatter are also written to the haze_transmittance and haze_inscatter layers." M {"Hazed Plate" "Haze Transmittance" "Haze In-scatter"}}
+ addUserKnob {26 plate_divider l Plate}
+ addUserKnob {4 plate_type l plate t "Camera: a perspective render or plate, with its Camera plugged into the 'camera' input. Lat-long: a 360 lat-long render, such as an environment of the mountains." M {Camera Lat-long}}
+ addUserKnob {41 depth_channel l "depth channel" t "Channel holding the depth." T DepthPick.from0}
+ addUserKnob {4 depth_type l "depth type" t "Distance: distance from the camera (most path tracers' 'distance' AOV). Planar Z: depth along the camera's view axis (Arnold/V-Ray Z). 1/Z: Nuke's ScanlineRender." M {Distance "Planar Z" 1/Z}}
+ addUserKnob {7 depth_scale l "units to metres" t "Multiplies depth to get metres, e.g. 0.01 for centimetres." R 0.001 100}
+ depth_scale 1
+ addUserKnob {7 latlong_camera_height l "camera height (m)" t "Camera height above sea level for lat-long plates. Camera plates use the camera's height." R 0 5000}
+ latlong_camera_height 1
+ addUserKnob {4 sky_handling l sky t "Pixels with no depth (or beyond 'sky depth') are sky. Leave Sky keeps them as they are; Haze Sky hazes them as if they were 'sky distance' away." M {"Leave Sky" "Haze Sky"}}
+ addUserKnob {7 sky_distance l "sky distance (km)" t "Distance used for sky pixels with Haze Sky." R 0 200}
+ sky_distance 50
+ addUserKnob {7 sky_threshold l "sky depth" t "Depth (in the plate's units) at or beyond which a pixel counts as sky." R 0 1e+07}
+ sky_threshold 10000000
+ addUserKnob {26 haze_divider l Haze}
+ addUserKnob {6 inherit_atmos l "inherit from atmos" t "With an EzAtmosScatter node in the 'atmos' input, take its haze density, haze height and hdri rotation, so the haze matches its sky." +STARTLINE}
+ inherit_atmos true
+ addUserKnob {4 haze_color_from l "haze color from" t "Atmos Input: the colour comes from the lat-long in the 'atmos' input, looked up in each pixel's view direction, so the sun side glows. Color: one flat colour." M {"Atmos Input" Color}}
+ addUserKnob {41 atmos_layer l "atmos layer" t "Layer of the atmos input to use: atmos_haze_color for EzAtmosScatter, rgba for a plain lat-long." T AtmosPick.in1}
+ addUserKnob {18 haze_color l "haze color" t "Haze colour when 'haze color from' is Color, or no atmos input is connected."}
+ haze_color {0.6 0.65 0.75}
+ addUserKnob {7 haze_color_gain l "haze brightness" t "Multiplies the haze colour." R 0 4}
+ haze_color_gain 1
+ addUserKnob {18 haze_density l "haze density (1/m)" t "How much the haze dims light per metre at camera height. Ignored when inheriting."}
+ haze_density {0.0001 0.0001 0.0001}
+ addUserKnob {7 haze_amount l "haze amount" t "Multiplies the haze density." R 0 10}
+ haze_amount 1
+ addUserKnob {7 haze_height l "haze height (km)" t "Height over which the haze thins by about two thirds. Ignored when inheriting." R 0.05 10}
+ haze_height 1.2
+ addUserKnob {7 haze_start l "haze start (m)" t "Distance from the camera where the haze begins." R 0 10000}
+ addUserKnob {7 max_distance l "max distance (km)" t "Caps the hazed distance. 0 = no cap." R 0 200}
+ addUserKnob {7 env_rotation l "atmos rotation" t "Rotation of the atmos lat-long in degrees. Ignored when inheriting." R -180 180}
+}
+ Input {
+  inputs 0
+  name camera
+  xpos 300
+  ypos -300
+  number 1
+ }
+ Input {
+  inputs 0
+  name atmos
+  xpos 600
+  ypos -300
+  number 2
+ }
+ Shuffle2 {
+  fromInput1 {{0} B}
+  in1 none
+  fromInput2 {{0} B}
+  name AtmosPick
+  xpos 600
+  ypos -200
+ }
+set Ncb125000 [stack 0]
+ Input {
+  inputs 0
+  name plate
+  xpos 0
+  ypos -300
+ }
+set Ncb124000 [stack 0]
+push $Ncb124000
+ Copy {
+  inputs 2
+  from0 depth.Z
+  to0 rgba.red
+  name DepthPick
+  xpos 150
+  ypos -200
+ }
+set Ncb124c00 [stack 0]
+push $Ncb124000
+ BlinkScript {
+  inputs 3
+  recompileCount 2
+  KernelDescription "3 \"EzDepthHaze\" iterate pixelWise 9e7478b013640023504e32161dd9664a454f3c604533e38552a1b100f9e4c08a 4 \"plate\" Read Point \"depth\" Read Point \"env\" Read Random \"dst\" Write Point 24 \"output\" Int 1 AAAAAA== \"latlong_plate\" Int 1 AAAAAA== \"cam_row0\" Float 3 AACAPwAAAAAAAAAAAAAAAA== \"cam_row1\" Float 3 AAAAAAAAgD8AAAAAAAAAAA== \"cam_row2\" Float 3 AAAAAAAAAAAAAIA/AAAAAA== \"cam_position\" Float 3 AAAAAAAAAAAAAAAAAAAAAA== \"focal\" Float 1 AAAMQg== \"haperture\" Float 1 AAAQQg== \"vaperture\" Float 1 AACiQQ== \"latlong_camera_height\" Float 1 AACAPw== \"depth_type\" Int 1 AAAAAA== \"depth_scale\" Float 1 AACAPw== \"sky_threshold\" Float 1 gJYYSw== \"haze_sky\" Int 1 AAAAAA== \"sky_distance\" Float 1 AFBDRw== \"use_env\" Int 1 AQAAAA== \"env_rotation\" Float 1 AAAAAA== \"haze_color\" Float 3 mpkZP2ZmJj8AAEA/AAAAAA== \"haze_color_gain\" Float 1 AACAPw== \"haze_density\" Float 3 F7fROBe30TgXt9E4AAAAAA== \"haze_amount\" Float 1 AACAPw== \"haze_height\" Float 1 AACWRA== \"haze_start\" Float 1 AAAAAA== \"max_distance\" Float 1 AAAAAA== 24 \"output\" 1 1 Default \"latlongPlate\" 1 1 Default \"camRow0\" 3 1 Default \"camRow1\" 3 1 Default \"camRow2\" 3 1 Default \"camPosition\" 3 1 Default \"focal\" 1 1 Default \"haperture\" 1 1 Default \"vaperture\" 1 1 Default \"latlongCameraHeight\" 1 1 Default \"depthType\" 1 1 Default \"depthScale\" 1 1 Default \"skyThreshold\" 1 1 Default \"hazeSky\" 1 1 Default \"skyDistance\" 1 1 Default \"useEnv\" 1 1 Default \"envRotation\" 1 1 Default \"hazeColor\" 3 1 Default \"hazeColorGain\" 1 1 Default \"hazeDensity\" 3 1 Default \"hazeAmount\" 1 1 Default \"hazeHeight\" 1 1 Default \"hazeStart\" 1 1 Default \"maxDistance\" 1 1 Default 1 \"pi\" Float 1 1 AAAAAA=="
+  kernelSource "// EzDepthHaze: hazes a plate with its depth, lit like EzAtmosScatter's haze.\n//\n// For every pixel the kernel finds the view direction (from the camera, or from the\n// lat-long position), converts its depth to metres, and works out how much haze lies\n// between the camera and the surface. The haze thins exponentially with altitude, so\n// looking up clears faster than looking sideways:\n//\n//   tau    = density * H / c * (exp(-c * s / H) - exp(-c * d / H)),  c = dir.y\n//   T      = exp(-tau)\n//   result = plate * T + hazeColor(dir) * (1 - T)\n//\n// where s is where the haze starts along the ray, d the surface distance and H the haze\n// height. hazeColor is the colour infinitely deep haze has in that direction: the `env`\n// input (EzAtmosScatter's atmos_haze_color lat-long) or a flat colour.\n//\n// Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the\n// EzAtmosScatter convention (centre column looks down -Z, top row up).\n// Distances are in metres, +Y is up.\n//\n// output: 0 = hazed plate, 1 = haze transmittance, 2 = haze in-scatter\n\nkernel EzDepthHaze : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> plate;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eRead, eAccessRandom, eEdgeClamped> env;\n  Image<eWrite> dst;\n\nparam:\n  int output;\n  int latlongPlate;\n  float3 camRow0;\n  float3 camRow1;\n  float3 camRow2;\n  float3 camPosition;\n  float focal;\n  float haperture;\n  float vaperture;\n  float latlongCameraHeight;\n  int depthType;\n  float depthScale;\n  float skyThreshold;\n  int hazeSky;\n  float skyDistance;\n  int useEnv;\n  float envRotation;\n  float3 hazeColor;\n  float hazeColorGain;\n  float3 hazeDensity;\n  float hazeAmount;\n  float hazeHeight;\n  float hazeStart;\n  float maxDistance;\n\nlocal:\n  float pi;\n\n  void define()\n  \{\n    defineParam(output, \"output\", 0);\n    defineParam(latlongPlate, \"latlong_plate\", 0);\n    defineParam(camRow0, \"cam_row0\", float3(1.0f, 0.0f, 0.0f));\n    defineParam(camRow1, \"cam_row1\", float3(0.0f, 1.0f, 0.0f));\n    defineParam(camRow2, \"cam_row2\", float3(0.0f, 0.0f, 1.0f));\n    defineParam(camPosition, \"cam_position\", float3(0.0f, 0.0f, 0.0f));\n    defineParam(focal, \"focal\", 35.0f);\n    defineParam(haperture, \"haperture\", 36.0f);\n    defineParam(vaperture, \"vaperture\", 20.25f);\n    defineParam(latlongCameraHeight, \"latlong_camera_height\", 1.0f);\n    defineParam(depthType, \"depth_type\", 0);\n    defineParam(depthScale, \"depth_scale\", 1.0f);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n    defineParam(hazeSky, \"haze_sky\", 0);\n    defineParam(skyDistance, \"sky_distance\", 50000.0f);\n    defineParam(useEnv, \"use_env\", 1);\n    defineParam(envRotation, \"env_rotation\", 0.0f);\n    defineParam(hazeColor, \"haze_color\", float3(0.6f, 0.65f, 0.75f));\n    defineParam(hazeColorGain, \"haze_color_gain\", 1.0f);\n    defineParam(hazeDensity, \"haze_density\", float3(0.0001f, 0.0001f, 0.0001f));\n    defineParam(hazeAmount, \"haze_amount\", 1.0f);\n    defineParam(hazeHeight, \"haze_height\", 1200.0f);\n    defineParam(hazeStart, \"haze_start\", 0.0f);\n    defineParam(maxDistance, \"max_distance\", 0.0f);\n  \}\n\n  void init()\n  \{\n    pi = 3.14159265358979f;\n  \}\n\n  float3 exp3(float3 v)\n  \{\n    return float3(exp(v.x), exp(v.y), exp(v.z));\n  \}\n\n  float3 envLookup(float3 d)\n  \{\n    float lon = atan2(d.x, -d.z) - envRotation * pi / 180.0f;\n    float lat = asin(clamp(d.y, -1.0f, 1.0f));\n    float u = lon / (2.0f * pi) + 0.5f;\n    u = u - floor(u);\n    float v = lat / pi + 0.5f;\n    float x = env.bounds.x1 + u * env.bounds.width() - 0.5f;\n    float y = env.bounds.y1 + v * env.bounds.height() - 0.5f;\n    float4 c = bilinear(env, x, y);\n    return float3(c.x, c.y, c.z);\n  \}\n\n  // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray\n  // through haze that thins with height.\n  float heightPath(float c, float s, float d)\n  \{\n    if (fabs(c) * (d - s) / hazeHeight < 1e-4f)\n      return (d - s) * exp(-c * s / hazeHeight);\n    return hazeHeight / c * (exp(-c * s / hazeHeight) - exp(-c * d / hazeHeight));\n  \}\n\n  void process(int2 pos)\n  \{\n    float4 src = plate();\n    float rawDepth = depth().x;\n\n    float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();\n    float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();\n    float3 dir;\n    float3 origin;\n    float planarScale = 1.0f;\n    if (latlongPlate != 0) \{\n      float lon = (u - 0.5f) * 2.0f * pi;\n      float lat = (v - 0.5f) * pi;\n      dir = float3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));\n      origin = float3(0.0f, latlongCameraHeight, 0.0f);\n    \} else \{\n      float3 camDir = float3((u - 0.5f) * haperture / focal, (v - 0.5f) * vaperture / focal, -1.0f);\n      planarScale = length(camDir);\n      dir = normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));\n      origin = camPosition;\n    \}\n\n    // Depth to distance along the ray, in metres.\n    float dist = rawDepth;\n    if (depthType == 1)\n      dist = rawDepth * planarScale;\n    else if (depthType == 2)\n      dist = rawDepth > 0.0f ? planarScale / rawDepth : 0.0f;\n    dist *= depthScale;\n\n    bool sky = rawDepth <= 0.0f || dist >= skyThreshold;\n    if (sky)\n      dist = hazeSky != 0 ? skyDistance : 0.0f;\n    if (maxDistance > 0.0f)\n      dist = min(dist, maxDistance);\n\n    float s = min(hazeStart, dist);\n    // Density is given at camera height; heightPath measures from the camera.\n    float path = heightPath(dir.y, s, dist);\n    float3 transmittance = exp3(-hazeDensity * (hazeAmount * path));\n\n    float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;\n    light *= hazeColorGain;\n    float3 inscatter = light * (float3(1.0f) - transmittance);\n\n    float3 rgb = float3(src.x, src.y, src.z) * transmittance + inscatter;\n    float alpha = src.w;\n    if (output == 1) \{\n      rgb = transmittance;\n      alpha = 1.0f;\n    \} else if (output == 2) \{\n      rgb = inscatter;\n      alpha = 1.0f;\n    \}\n    dst() = float4(rgb.x, rgb.y, rgb.z, alpha);\n  \}\n\};\n"
+  rebuild ""
+  EzDepthHaze_output {{1}}
+  EzDepthHaze_latlong_plate {{parent.plate_type}}
+  EzDepthHaze_cam_row0 {{"\[exists parent.input1] ? parent.input1.world_matrix.0 : 1"} {"\[exists parent.input1] ? parent.input1.world_matrix.1 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.2 : 0"}}
+  EzDepthHaze_cam_row1 {{"\[exists parent.input1] ? parent.input1.world_matrix.4 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.5 : 1"} {"\[exists parent.input1] ? parent.input1.world_matrix.6 : 0"}}
+  EzDepthHaze_cam_row2 {{"\[exists parent.input1] ? parent.input1.world_matrix.8 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.9 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.10 : 1"}}
+  EzDepthHaze_cam_position {{"\[exists parent.input1] ? parent.input1.world_matrix.3 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.7 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.11 : 0"}}
+  EzDepthHaze_focal {{"\[exists parent.input1] ? parent.input1.focal : 35"}}
+  EzDepthHaze_haperture {{"\[exists parent.input1] ? parent.input1.haperture : 36"}}
+  EzDepthHaze_vaperture {{"\[exists parent.input1] ? parent.input1.vaperture : 20.25"}}
+  EzDepthHaze_latlong_camera_height {{parent.latlong_camera_height}}
+  EzDepthHaze_depth_type {{parent.depth_type}}
+  EzDepthHaze_depth_scale {{parent.depth_scale}}
+  EzDepthHaze_sky_threshold {{parent.sky_threshold}}
+  EzDepthHaze_haze_sky {{parent.sky_handling}}
+  EzDepthHaze_sky_distance {{"parent.sky_distance * 1000"}}
+  EzDepthHaze_use_env {{"\[exists parent.input2] && parent.haze_color_from==0"}}
+  EzDepthHaze_env_rotation {{"parent.inherit_atmos && \[exists parent.input2.hdri_rotation] ? parent.input2.hdri_rotation : parent.env_rotation"}}
+  EzDepthHaze_haze_color {{parent.haze_color.r} {parent.haze_color.g} {parent.haze_color.b}}
+  EzDepthHaze_haze_color_gain {{parent.haze_color_gain}}
+  EzDepthHaze_haze_density {{"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.r : parent.haze_density.r"} {"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.g : parent.haze_density.g"} {"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.b : parent.haze_density.b"}}
+  EzDepthHaze_haze_amount {{parent.haze_amount}}
+  EzDepthHaze_haze_height {{"(parent.inherit_atmos && \[exists parent.input2.haze_height] ? parent.input2.haze_height : parent.haze_height) * 1000"}}
+  EzDepthHaze_haze_start {{parent.haze_start}}
+  EzDepthHaze_max_distance {{"parent.max_distance * 1000"}}
+  rebuild_finalise ""
+  name Transmittance
+  xpos 150
+  ypos -80
+ }
+set Ncb125800 [stack 0]
+push $Ncb124000
+ Merge2 {
+  inputs 2
+  operation multiply
+  output rgb
+  name PlateTimesT
+  xpos 300
+ }
+push $Ncb125000
+push $Ncb124c00
+push $Ncb124000
+ BlinkScript {
+  inputs 3
+  recompileCount 2
+  KernelDescription "3 \"EzDepthHaze\" iterate pixelWise 9e7478b013640023504e32161dd9664a454f3c604533e38552a1b100f9e4c08a 4 \"plate\" Read Point \"depth\" Read Point \"env\" Read Random \"dst\" Write Point 24 \"output\" Int 1 AAAAAA== \"latlong_plate\" Int 1 AAAAAA== \"cam_row0\" Float 3 AACAPwAAAAAAAAAAAAAAAA== \"cam_row1\" Float 3 AAAAAAAAgD8AAAAAAAAAAA== \"cam_row2\" Float 3 AAAAAAAAAAAAAIA/AAAAAA== \"cam_position\" Float 3 AAAAAAAAAAAAAAAAAAAAAA== \"focal\" Float 1 AAAMQg== \"haperture\" Float 1 AAAQQg== \"vaperture\" Float 1 AACiQQ== \"latlong_camera_height\" Float 1 AACAPw== \"depth_type\" Int 1 AAAAAA== \"depth_scale\" Float 1 AACAPw== \"sky_threshold\" Float 1 gJYYSw== \"haze_sky\" Int 1 AAAAAA== \"sky_distance\" Float 1 AFBDRw== \"use_env\" Int 1 AQAAAA== \"env_rotation\" Float 1 AAAAAA== \"haze_color\" Float 3 mpkZP2ZmJj8AAEA/AAAAAA== \"haze_color_gain\" Float 1 AACAPw== \"haze_density\" Float 3 F7fROBe30TgXt9E4AAAAAA== \"haze_amount\" Float 1 AACAPw== \"haze_height\" Float 1 AACWRA== \"haze_start\" Float 1 AAAAAA== \"max_distance\" Float 1 AAAAAA== 24 \"output\" 1 1 Default \"latlongPlate\" 1 1 Default \"camRow0\" 3 1 Default \"camRow1\" 3 1 Default \"camRow2\" 3 1 Default \"camPosition\" 3 1 Default \"focal\" 1 1 Default \"haperture\" 1 1 Default \"vaperture\" 1 1 Default \"latlongCameraHeight\" 1 1 Default \"depthType\" 1 1 Default \"depthScale\" 1 1 Default \"skyThreshold\" 1 1 Default \"hazeSky\" 1 1 Default \"skyDistance\" 1 1 Default \"useEnv\" 1 1 Default \"envRotation\" 1 1 Default \"hazeColor\" 3 1 Default \"hazeColorGain\" 1 1 Default \"hazeDensity\" 3 1 Default \"hazeAmount\" 1 1 Default \"hazeHeight\" 1 1 Default \"hazeStart\" 1 1 Default \"maxDistance\" 1 1 Default 1 \"pi\" Float 1 1 AAAAAA=="
+  kernelSource "// EzDepthHaze: hazes a plate with its depth, lit like EzAtmosScatter's haze.\n//\n// For every pixel the kernel finds the view direction (from the camera, or from the\n// lat-long position), converts its depth to metres, and works out how much haze lies\n// between the camera and the surface. The haze thins exponentially with altitude, so\n// looking up clears faster than looking sideways:\n//\n//   tau    = density * H / c * (exp(-c * s / H) - exp(-c * d / H)),  c = dir.y\n//   T      = exp(-tau)\n//   result = plate * T + hazeColor(dir) * (1 - T)\n//\n// where s is where the haze starts along the ray, d the surface distance and H the haze\n// height. hazeColor is the colour infinitely deep haze has in that direction: the `env`\n// input (EzAtmosScatter's atmos_haze_color lat-long) or a flat colour.\n//\n// Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the\n// EzAtmosScatter convention (centre column looks down -Z, top row up).\n// Distances are in metres, +Y is up.\n//\n// output: 0 = hazed plate, 1 = haze transmittance, 2 = haze in-scatter\n\nkernel EzDepthHaze : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> plate;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eRead, eAccessRandom, eEdgeClamped> env;\n  Image<eWrite> dst;\n\nparam:\n  int output;\n  int latlongPlate;\n  float3 camRow0;\n  float3 camRow1;\n  float3 camRow2;\n  float3 camPosition;\n  float focal;\n  float haperture;\n  float vaperture;\n  float latlongCameraHeight;\n  int depthType;\n  float depthScale;\n  float skyThreshold;\n  int hazeSky;\n  float skyDistance;\n  int useEnv;\n  float envRotation;\n  float3 hazeColor;\n  float hazeColorGain;\n  float3 hazeDensity;\n  float hazeAmount;\n  float hazeHeight;\n  float hazeStart;\n  float maxDistance;\n\nlocal:\n  float pi;\n\n  void define()\n  \{\n    defineParam(output, \"output\", 0);\n    defineParam(latlongPlate, \"latlong_plate\", 0);\n    defineParam(camRow0, \"cam_row0\", float3(1.0f, 0.0f, 0.0f));\n    defineParam(camRow1, \"cam_row1\", float3(0.0f, 1.0f, 0.0f));\n    defineParam(camRow2, \"cam_row2\", float3(0.0f, 0.0f, 1.0f));\n    defineParam(camPosition, \"cam_position\", float3(0.0f, 0.0f, 0.0f));\n    defineParam(focal, \"focal\", 35.0f);\n    defineParam(haperture, \"haperture\", 36.0f);\n    defineParam(vaperture, \"vaperture\", 20.25f);\n    defineParam(latlongCameraHeight, \"latlong_camera_height\", 1.0f);\n    defineParam(depthType, \"depth_type\", 0);\n    defineParam(depthScale, \"depth_scale\", 1.0f);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n    defineParam(hazeSky, \"haze_sky\", 0);\n    defineParam(skyDistance, \"sky_distance\", 50000.0f);\n    defineParam(useEnv, \"use_env\", 1);\n    defineParam(envRotation, \"env_rotation\", 0.0f);\n    defineParam(hazeColor, \"haze_color\", float3(0.6f, 0.65f, 0.75f));\n    defineParam(hazeColorGain, \"haze_color_gain\", 1.0f);\n    defineParam(hazeDensity, \"haze_density\", float3(0.0001f, 0.0001f, 0.0001f));\n    defineParam(hazeAmount, \"haze_amount\", 1.0f);\n    defineParam(hazeHeight, \"haze_height\", 1200.0f);\n    defineParam(hazeStart, \"haze_start\", 0.0f);\n    defineParam(maxDistance, \"max_distance\", 0.0f);\n  \}\n\n  void init()\n  \{\n    pi = 3.14159265358979f;\n  \}\n\n  float3 exp3(float3 v)\n  \{\n    return float3(exp(v.x), exp(v.y), exp(v.z));\n  \}\n\n  float3 envLookup(float3 d)\n  \{\n    float lon = atan2(d.x, -d.z) - envRotation * pi / 180.0f;\n    float lat = asin(clamp(d.y, -1.0f, 1.0f));\n    float u = lon / (2.0f * pi) + 0.5f;\n    u = u - floor(u);\n    float v = lat / pi + 0.5f;\n    float x = env.bounds.x1 + u * env.bounds.width() - 0.5f;\n    float y = env.bounds.y1 + v * env.bounds.height() - 0.5f;\n    float4 c = bilinear(env, x, y);\n    return float3(c.x, c.y, c.z);\n  \}\n\n  // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray\n  // through haze that thins with height.\n  float heightPath(float c, float s, float d)\n  \{\n    if (fabs(c) * (d - s) / hazeHeight < 1e-4f)\n      return (d - s) * exp(-c * s / hazeHeight);\n    return hazeHeight / c * (exp(-c * s / hazeHeight) - exp(-c * d / hazeHeight));\n  \}\n\n  void process(int2 pos)\n  \{\n    float4 src = plate();\n    float rawDepth = depth().x;\n\n    float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();\n    float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();\n    float3 dir;\n    float3 origin;\n    float planarScale = 1.0f;\n    if (latlongPlate != 0) \{\n      float lon = (u - 0.5f) * 2.0f * pi;\n      float lat = (v - 0.5f) * pi;\n      dir = float3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));\n      origin = float3(0.0f, latlongCameraHeight, 0.0f);\n    \} else \{\n      float3 camDir = float3((u - 0.5f) * haperture / focal, (v - 0.5f) * vaperture / focal, -1.0f);\n      planarScale = length(camDir);\n      dir = normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));\n      origin = camPosition;\n    \}\n\n    // Depth to distance along the ray, in metres.\n    float dist = rawDepth;\n    if (depthType == 1)\n      dist = rawDepth * planarScale;\n    else if (depthType == 2)\n      dist = rawDepth > 0.0f ? planarScale / rawDepth : 0.0f;\n    dist *= depthScale;\n\n    bool sky = rawDepth <= 0.0f || dist >= skyThreshold;\n    if (sky)\n      dist = hazeSky != 0 ? skyDistance : 0.0f;\n    if (maxDistance > 0.0f)\n      dist = min(dist, maxDistance);\n\n    float s = min(hazeStart, dist);\n    // Density is given at camera height; heightPath measures from the camera.\n    float path = heightPath(dir.y, s, dist);\n    float3 transmittance = exp3(-hazeDensity * (hazeAmount * path));\n\n    float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;\n    light *= hazeColorGain;\n    float3 inscatter = light * (float3(1.0f) - transmittance);\n\n    float3 rgb = float3(src.x, src.y, src.z) * transmittance + inscatter;\n    float alpha = src.w;\n    if (output == 1) \{\n      rgb = transmittance;\n      alpha = 1.0f;\n    \} else if (output == 2) \{\n      rgb = inscatter;\n      alpha = 1.0f;\n    \}\n    dst() = float4(rgb.x, rgb.y, rgb.z, alpha);\n  \}\n\};\n"
+  rebuild ""
+  EzDepthHaze_output {{0}}
+  EzDepthHaze_latlong_plate {{parent.plate_type}}
+  EzDepthHaze_cam_row0 {{"\[exists parent.input1] ? parent.input1.world_matrix.0 : 1"} {"\[exists parent.input1] ? parent.input1.world_matrix.1 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.2 : 0"}}
+  EzDepthHaze_cam_row1 {{"\[exists parent.input1] ? parent.input1.world_matrix.4 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.5 : 1"} {"\[exists parent.input1] ? parent.input1.world_matrix.6 : 0"}}
+  EzDepthHaze_cam_row2 {{"\[exists parent.input1] ? parent.input1.world_matrix.8 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.9 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.10 : 1"}}
+  EzDepthHaze_cam_position {{"\[exists parent.input1] ? parent.input1.world_matrix.3 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.7 : 0"} {"\[exists parent.input1] ? parent.input1.world_matrix.11 : 0"}}
+  EzDepthHaze_focal {{"\[exists parent.input1] ? parent.input1.focal : 35"}}
+  EzDepthHaze_haperture {{"\[exists parent.input1] ? parent.input1.haperture : 36"}}
+  EzDepthHaze_vaperture {{"\[exists parent.input1] ? parent.input1.vaperture : 20.25"}}
+  EzDepthHaze_latlong_camera_height {{parent.latlong_camera_height}}
+  EzDepthHaze_depth_type {{parent.depth_type}}
+  EzDepthHaze_depth_scale {{parent.depth_scale}}
+  EzDepthHaze_sky_threshold {{parent.sky_threshold}}
+  EzDepthHaze_haze_sky {{parent.sky_handling}}
+  EzDepthHaze_sky_distance {{"parent.sky_distance * 1000"}}
+  EzDepthHaze_use_env {{"\[exists parent.input2] && parent.haze_color_from==0"}}
+  EzDepthHaze_env_rotation {{"parent.inherit_atmos && \[exists parent.input2.hdri_rotation] ? parent.input2.hdri_rotation : parent.env_rotation"}}
+  EzDepthHaze_haze_color {{parent.haze_color.r} {parent.haze_color.g} {parent.haze_color.b}}
+  EzDepthHaze_haze_color_gain {{parent.haze_color_gain}}
+  EzDepthHaze_haze_density {{"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.r : parent.haze_density.r"} {"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.g : parent.haze_density.g"} {"parent.inherit_atmos && \[exists parent.input2.haze_density] ? parent.input2.haze_density.b : parent.haze_density.b"}}
+  EzDepthHaze_haze_amount {{parent.haze_amount}}
+  EzDepthHaze_haze_height {{"(parent.inherit_atmos && \[exists parent.input2.haze_height] ? parent.input2.haze_height : parent.haze_height) * 1000"}}
+  EzDepthHaze_haze_start {{parent.haze_start}}
+  EzDepthHaze_max_distance {{"parent.max_distance * 1000"}}
+  rebuild_finalise ""
+  name Haze
+  xpos 0
+  ypos -80
+ }
+set Ncb125400 [stack 0]
+ Merge2 {
+  inputs 2
+  operation from
+  output rgb
+  name InScatter
+  xpos 300
+  ypos 60
+ }
+set Ncb168000 [stack 0]
+push $Ncb125800
+push $Ncb168000
+push $Ncb125800
+push $Ncb125400
+ Switch {
+  inputs 3
+  which {{parent.view_output}}
+  name ViewOutput
+  xpos 0
+  ypos 120
+ }
+push $Ncb124000
+ Copy {
+  inputs 2
+  channels rgb
+  name MainRGB
+  xpos 0
+  ypos 200
+ }
+add_layer {haze_transmittance haze_transmittance.red haze_transmittance.green haze_transmittance.blue}
+ Copy {
+  inputs 2
+  from0 rgba.red
+  to0 haze_transmittance.red
+  from1 rgba.green
+  to1 haze_transmittance.green
+  from2 rgba.blue
+  to2 haze_transmittance.blue
+  name Layer_haze_transmittance
+  xpos 0
+  ypos 260
+ }
+add_layer {haze_inscatter haze_inscatter.red haze_inscatter.green haze_inscatter.blue}
+ Copy {
+  inputs 2
+  from0 rgba.red
+  to0 haze_inscatter.red
+  from1 rgba.green
+  to1 haze_inscatter.green
+  from2 rgba.blue
+  to2 haze_inscatter.blue
+  name Layer_haze_inscatter
+  xpos 0
+  ypos 320
+ }
+ Output {
+  name Output1
+  xpos 0
+  ypos 420
+ }
+end_group
