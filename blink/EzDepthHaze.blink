@@ -13,6 +13,11 @@
 // height. hazeColor is the colour infinitely deep haze has in that direction: the `env`
 // input (EzAtmosScatter's atmos_haze_color lat-long) or a flat colour.
 //
+// With `volumetric` on, the ray is marched instead so the density can vary along it: the
+// same haze, plus a fog layer that fills everything below fogTop and fades out over
+// fogSoftness above it, all modulated by 3D fBm noise fixed in world space (it drifts
+// with noiseWind over noiseTime, so it stays put when the camera moves).
+//
 // Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the
 // EzAtmosScatter convention (centre column looks down -Z, top row up).
 // Distances are in metres, +Y is up.
@@ -51,6 +56,19 @@ param:
   float hazeHeight;
   float hazeStart;
   float maxDistance;
+  int volumetric;
+  int marchSteps;
+  float fogDensity;
+  float fogTop;
+  float fogSoftness;
+  float noiseAmount;
+  float noiseOnHaze;
+  float noiseSize;
+  float noiseStretch;
+  int noiseDetail;
+  float3 noiseWind;
+  float noiseTime;
+  float noiseSeed;
 
 local:
   float pi;
@@ -81,6 +99,19 @@ local:
     defineParam(hazeHeight, "haze_height", 1200.0f);
     defineParam(hazeStart, "haze_start", 0.0f);
     defineParam(maxDistance, "max_distance", 0.0f);
+    defineParam(volumetric, "volumetric", 0);
+    defineParam(marchSteps, "march_steps", 48);
+    defineParam(fogDensity, "fog_density", 0.0f);
+    defineParam(fogTop, "fog_top", 1000.0f);
+    defineParam(fogSoftness, "fog_softness", 300.0f);
+    defineParam(noiseAmount, "noise_amount", 0.0f);
+    defineParam(noiseOnHaze, "noise_on_haze", 0.3f);
+    defineParam(noiseSize, "noise_size", 2000.0f);
+    defineParam(noiseStretch, "noise_stretch", 3.0f);
+    defineParam(noiseDetail, "noise_detail", 4);
+    defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
+    defineParam(noiseTime, "noise_time", 0.0f);
+    defineParam(noiseSeed, "noise_seed", 1.0f);
   }
 
   void init()
@@ -104,6 +135,59 @@ local:
     float y = env.bounds.y1 + v * env.bounds.height() - 0.5f;
     float4 c = bilinear(env, x, y);
     return float3(c.x, c.y, c.z);
+  }
+
+  float hash3(float3 p)
+  {
+    float h = sin(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f + noiseSeed * 19.3f) * 43758.5453f;
+    return h - floor(h);
+  }
+
+  float vnoise3(float3 p)
+  {
+    float ix = floor(p.x), iy = floor(p.y), iz = floor(p.z);
+    float fx = p.x - ix, fy = p.y - iy, fz = p.z - iz;
+    float ux = fx * fx * (3.0f - 2.0f * fx);
+    float uy = fy * fy * (3.0f - 2.0f * fy);
+    float uz = fz * fz * (3.0f - 2.0f * fz);
+    float a = hash3(float3(ix, iy, iz)), b = hash3(float3(ix + 1.0f, iy, iz));
+    float c = hash3(float3(ix, iy + 1.0f, iz)), d = hash3(float3(ix + 1.0f, iy + 1.0f, iz));
+    float e = hash3(float3(ix, iy, iz + 1.0f)), f = hash3(float3(ix + 1.0f, iy, iz + 1.0f));
+    float g = hash3(float3(ix, iy + 1.0f, iz + 1.0f)), h = hash3(float3(ix + 1.0f, iy + 1.0f, iz + 1.0f));
+    float ab = a + (b - a) * ux, cd = c + (d - c) * ux;
+    float ef = e + (f - e) * ux, gh = g + (h - g) * ux;
+    float lo = ab + (cd - ab) * uy, hi = ef + (gh - ef) * uy;
+    return lo + (hi - lo) * uz;
+  }
+
+  // Density multiplier from world-space fBm: 1 on average, more or less where the noise
+  // is high or low. Squashed vertically so it reads as banks and wisps, not blobs.
+  float noiseFactor(float3 p)
+  {
+    if (noiseAmount <= 0.0f)
+      return 1.0f;
+    float3 q = (p - noiseWind * noiseTime) / noiseSize;
+    q.y *= noiseStretch;
+    float sum = 0.0f, amp = 0.5f, norm = 0.0f;
+    for (int i = 0; i < noiseDetail; i++) {
+      sum += amp * vnoise3(q);
+      norm += amp;
+      q = float3(q.x * 2.03f + 1.7f, q.y * 2.03f + 9.2f, q.z * 2.03f + 4.1f);
+      amp *= 0.5f;
+    }
+    float n = sum / norm;
+    return max(1.0f + noiseAmount * 2.5f * (n - 0.5f), 0.0f);
+  }
+
+  // Extinction per metre at p: the base haze, thinning with height from the camera, plus
+  // the fog layer, which is full below fogTop and fades out over fogSoftness above it.
+  float3 density(float3 p, float cameraHeight)
+  {
+    float3 haze = hazeDensity * (hazeAmount * exp(-(p.y - cameraHeight) / hazeHeight));
+    float edge = clamp((p.y - fogTop) / max(fogSoftness, 1.0f) + 0.5f, 0.0f, 1.0f);
+    float fog = fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
+    float n = noiseFactor(p);
+    return (haze * (1.0f - noiseOnHaze + noiseOnHaze * n)) + float3(fog * n);
   }
 
   // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray
@@ -152,13 +236,41 @@ local:
       dist = min(dist, maxDistance);
 
     float s = min(hazeStart, dist);
-    // Density is given at camera height; heightPath measures from the camera.
-    float path = heightPath(dir.y, s, dist);
-    float3 transmittance = exp3(-hazeDensity * (hazeAmount * path));
-
     float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;
     light *= hazeColorGain;
-    float3 inscatter = light * (float3(1.0f) - transmittance);
+
+    float3 transmittance;
+    float3 inscatter;
+    if (volumetric == 0) {
+      // Density is given at camera height; heightPath measures from the camera.
+      float path = heightPath(dir.y, s, dist);
+      transmittance = exp3(-hazeDensity * (hazeAmount * path));
+      inscatter = light * (float3(1.0f) - transmittance);
+    } else {
+      // March the ray, so the density can change along it: haze thinning with height,
+      // a fog layer below fogTop, and world-space noise. Steps are packed towards the
+      // camera (quadratic spacing) and jittered per pixel to hide banding.
+      float jitter = hash3(float3(pos.x, pos.y, 17.0f));
+      transmittance = float3(1.0f);
+      inscatter = float3(0.0f);
+      float tPrev = s;
+      for (int i = 0; i < marchSteps; i++) {
+        float f = (i + jitter) / marchSteps;
+        float t = s + (dist - s) * f * f;
+        float dt = t - tPrev;
+        tPrev = t;
+        float3 p = origin + dir * t;
+        float3 sigma = density(p, origin.y) * dt;
+        float3 stepT = exp3(-sigma);
+        inscatter += transmittance * (float3(1.0f) - stepT) * light;
+        transmittance *= stepT;
+      }
+      // Last stretch up to the surface.
+      float3 p = origin + dir * (0.5f * (tPrev + dist));
+      float3 stepT = exp3(-density(p, origin.y) * (dist - tPrev));
+      inscatter += transmittance * (float3(1.0f) - stepT) * light;
+      transmittance *= stepT;
+    }
 
     float3 rgb = float3(src.x, src.y, src.z) * transmittance + inscatter;
     float alpha = src.w;

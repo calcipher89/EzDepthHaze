@@ -120,6 +120,33 @@ def _add_knobs(group, depth_pick, env_pick):
     add(*_double("env_rotation", "atmos rotation", -180, 180,
                  "Rotation of the atmos lat-long in degrees. Ignored when inheriting.", 0.0))
 
+    add(nuke.Text_Knob("volume_divider", "Fog and Noise"))
+    mode = nuke.Enumeration_Knob("haze_mode", "mode", ["Fast", "Volumetric"])
+    mode.setTooltip("Fast: the haze alone, worked out exactly in one step. Volumetric: marches each ray so "
+                    "the fog layer and noise below can change the density along it.")
+    add(mode)
+    quality = nuke.Enumeration_Knob("steps", "quality", ["Draft (16)", "Normal (48)", "High (96)"])
+    quality.setTooltip("Samples along each ray in Volumetric mode.")
+    add(quality, 1)
+    add(*_double("fog_density", "fog density (1/km)", 0, 5,
+                 "How thick the fog layer is. 1 dims light by about two thirds every kilometre.", 0.0))
+    add(*_double("fog_top", "fog top (m)", -500, 5000, "Altitude the fog fills up to, e.g. the valley floor "
+                 "plus a few hundred metres.", 1000.0))
+    add(*_double("fog_softness", "fog softness (m)", 0, 2000, "How gradually the fog fades out around its top.", 300.0))
+    add(*_double("noise_amount", "noise amount", 0, 1, "How much world-space noise breaks up the fog.", 0.0))
+    add(*_double("noise_on_haze", "noise on haze", 0, 1, "How much of the noise also applies to the "
+                 "thin haze, not only the fog.", 0.3))
+    add(*_double("noise_size", "noise size (m)", 10, 20000, "Size of the largest wisps and banks.", 2000.0))
+    add(*_double("noise_stretch", "noise flatten", 1, 10, "Squashes the noise vertically so it forms banks "
+                 "and layers rather than blobs.", 3.0))
+    detail = nuke.Int_Knob("noise_detail", "noise detail")
+    detail.setTooltip("Octaves of noise: more adds finer wisps.")
+    add(detail, 4)
+    wind = nuke.XYZ_Knob("noise_wind", "wind (m/s)")
+    wind.setTooltip("Drifts the noise over time.")
+    add(wind, [5.0, 0.0, 0.0])
+    add(*_double("noise_seed", "noise seed", 0, 100, "Changes the noise pattern.", 1.0))
+
     for knob in k:
         group.addKnob(knob)
     for name, value in defaults.items():
@@ -154,6 +181,20 @@ def _link_haze(node, output):
     _link(node, "haze_height", "(%s) * 1000" % (ATMOS % ("haze_height", "haze_height", "parent.haze_height")))
     _link(node, "haze_start", "parent.haze_start")
     _link(node, "max_distance", "parent.max_distance * 1000")
+    _link(node, "volumetric", "parent.haze_mode")
+    _link(node, "march_steps", "parent.steps==0 ? 16 : parent.steps==1 ? 48 : 96")
+    _link(node, "fog_density", "parent.fog_density / 1000")
+    _link(node, "fog_top", "parent.fog_top")
+    _link(node, "fog_softness", "parent.fog_softness")
+    _link(node, "noise_amount", "parent.noise_amount")
+    _link(node, "noise_on_haze", "parent.noise_on_haze")
+    _link(node, "noise_size", "parent.noise_size")
+    _link(node, "noise_stretch", "parent.noise_stretch")
+    _link(node, "noise_detail", "parent.noise_detail")
+    for i, c in enumerate("xyz"):
+        _link(node, "noise_wind", "parent.noise_wind.%s" % c, i)
+    _link(node, "noise_time", "frame / root.fps")
+    _link(node, "noise_seed", "parent.noise_seed")
 
 
 def build():
