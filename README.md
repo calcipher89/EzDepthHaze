@@ -160,6 +160,10 @@ Nuke15.1.exe --nukex -i --gpu -t examples/build_demo.py <output folder>
 
 It renders the terrain once to `demo_terrain.exr` and saves `ezdepthhaze_demo.nk`.
 
+`examples/build_layer_breakdown.py <demo folder>` then adds a labelled rebuild of the result
+from its layers next to the node (plate + surface light, times transmittance, plus sun and
+sky haze, with a difference check) and saves `ezdepthhaze_layer_breakdown.nk`.
+
 ## Rebuilding the gizmo
 
 ```
