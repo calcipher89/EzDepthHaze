@@ -59,6 +59,27 @@ def _double(name, label, lo, hi, tip, value):
     return knob, value
 
 
+def _preset_script():
+    """The apply button's script, with the preset values baked in, so the gizmo needs no
+    Python module at run time. python/ezdepthhaze.py is where the values are edited."""
+    presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"]})
+                   for name, p in ezdepthhaze.PRESETS)
+    return "\n".join([
+        "n = nuke.thisNode()",
+        "presets = %r" % presets,
+        "p = presets[n['preset'].value()]",
+        "for k, v in p['knobs'].items():",
+        "    n[k].setValue(v)",
+        "if p['fog_below_camera'] is not None:",
+        "    cam = n.input(1)",
+        "    if n['plate_type'].getValue() == 0 and cam is not None and cam.knob('world_matrix'):",
+        "        height = cam['world_matrix'].getValue(7)",
+        "    else:",
+        "        height = n['latlong_camera_height'].getValue()",
+        "    n['fog_top'].setValue(height - p['fog_below_camera'])",
+    ])
+
+
 def _add_knobs(group, depth_pick, env_pick):
     k = []
     defaults = {}
@@ -74,8 +95,7 @@ def _add_knobs(group, depth_pick, env_pick):
                       "Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\n"
                       + ezdepthhaze.preset_tooltip())
     add(preset, 1)
-    apply = nuke.PyScript_Knob("apply_preset", "apply",
-                               "import ezdepthhaze; ezdepthhaze.apply_preset(nuke.thisNode())")
+    apply = nuke.PyScript_Knob("apply_preset", "apply", _preset_script())
     apply.setTooltip("Sets the knobs of the chosen preset.")
     add(apply)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])

@@ -80,7 +80,8 @@ suggests one for each look. *haze tint* colours all the haze light.
 | Smoke Haze | Thick brown-orange haze, low contrast | Dimmed and reddened |
 | Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | Any |
 
-The preset values are in `python/ezdepthhaze.py`.
+The preset values are baked into the gizmo's apply button; edit them in
+`python/ezdepthhaze.py` and rebuild the gizmo.
 
 ## Fog and noise
 
