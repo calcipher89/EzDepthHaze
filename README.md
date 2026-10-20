@@ -64,6 +64,36 @@ channel of the plate and adds `haze_transmittance` and `haze_inscatter` layers.
 | max distance (km) | 0 | Caps the hazed distance (0 = off) |
 | atmos rotation | 0 | Rotation of the atmos lat-long, when not inheriting |
 
+## Fog and noise
+
+Set *mode* to *Volumetric* to march each ray, so the density can change along it:
+
+- **Fog layer**: fills everything below *fog top* (an altitude in metres) with *fog density*,
+  fading out over *fog softness*. Set the top a few hundred metres above the valley floors
+  and the fog pools in the valleys, with each ridge standing out in front of the next.
+- **Noise**: 3D fBm fixed in world space modulates the fog (and, by *noise on haze*, the thin
+  haze too), so it breaks into banks and wisps. *noise flatten* squashes it vertically into
+  layers; *wind* drifts it over time, so it stays put when the camera moves and moves when
+  the air does.
+
+Steps are packed towards the camera and jittered per pixel, so *quality* trades grain for
+speed.
+
+| Knob | Default | What it does |
+| --- | --- | --- |
+| mode | Fast | Fast (exact, one step) or Volumetric (marched, for fog and noise) |
+| quality | Normal (48) | Samples per ray in Volumetric mode |
+| fog density (1/km) | 0 | Thickness of the fog layer |
+| fog top (m) | 1000 | Altitude the fog fills up to |
+| fog softness (m) | 300 | How gradually the fog fades out around its top |
+| noise amount | 0 | How much the noise breaks up the fog |
+| noise on haze | 0.3 | How much of the noise applies to the thin haze as well |
+| noise size (m) | 2000 | Size of the largest wisps and banks |
+| noise flatten | 3 | Squashes the noise vertically into layers |
+| noise detail | 4 | Octaves of noise |
+| wind (m/s) | (5, 0, 0) | Drifts the noise over time |
+| noise seed | 1 | Changes the pattern |
+
 ## Demo
 
 `examples/DemoTerrain.blink` renders a procedural mountain range through a Nuke camera,
