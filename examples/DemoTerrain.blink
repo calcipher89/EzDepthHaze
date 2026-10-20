@@ -146,7 +146,7 @@ local:
     if (!hit) {
       // Rays that slip past the terrain below the horizon still see sky, not the
       // atmosphere's dark lower half.
-      float3 c = skyLookup(normalize(float3(dir.x, max(dir.y, 0.002f), dir.z)));
+      float3 c = skyLookup(normalize(float3(dir.x, max(dir.y, 0.03f), dir.z)));
       float mu = dot(dir, sunDir);
       float disc = clamp((mu - cos(0.5f * pi / 180.0f)) / 0.00002f, 0.0f, 1.0f);
       c += sunColor * sunDiscRadiance * disc;

@@ -1,0 +1,112 @@
+// EzShafts: screen-space light shafts for EzDepthHaze.
+//
+// For each pixel, steps across the image towards the sun's position on screen and
+// averages a light mask along the way: 1 where a pixel is sky (no depth, or beyond the
+// sky depth), 0 where it is terrain. Pixels whose line towards the sun crosses mountains
+// get a low value and the haze in front of them is darkened; gaps between ridges stay
+// bright, which reads as shafts of sunlight streaming through.
+//
+// Writes the visibility (0..1) in red. Camera plates only: lat-long plates and suns
+// behind the camera return 1 (no shafts).
+//
+// Inputs: `depth` with the depth in red. Same camera knobs as EzDepthHaze.
+
+kernel EzShafts : ImageComputationKernel<ePixelWise>
+{
+  Image<eRead, eAccessRandom, eEdgeClamped> depth;
+  Image<eWrite> dst;
+
+param:
+  int latlongPlate;
+  float3 camRow0;
+  float3 camRow1;
+  float3 camRow2;
+  float focal;
+  float haperture;
+  float vaperture;
+  float3 sunDirection;
+  float envRotation;
+  float skyThreshold;
+  float shaftLength;
+  int shaftSamples;
+  float shaftDecay;
+  float depthScale;
+  float clearDistance;
+
+local:
+  float pi;
+  float2 sunPixel;
+  int sunInFront;
+
+  void define()
+  {
+    defineParam(latlongPlate, "latlong_plate", 0);
+    defineParam(camRow0, "cam_row0", float3(1.0f, 0.0f, 0.0f));
+    defineParam(camRow1, "cam_row1", float3(0.0f, 1.0f, 0.0f));
+    defineParam(camRow2, "cam_row2", float3(0.0f, 0.0f, 1.0f));
+    defineParam(focal, "focal", 35.0f);
+    defineParam(haperture, "haperture", 36.0f);
+    defineParam(vaperture, "vaperture", 20.25f);
+    defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
+    defineParam(envRotation, "env_rotation", 0.0f);
+    defineParam(skyThreshold, "sky_threshold", 1e7f);
+    defineParam(shaftLength, "shaft_length", 0.6f);
+    defineParam(shaftSamples, "shaft_samples", 64);
+    defineParam(shaftDecay, "shaft_decay", 0.97f);
+    defineParam(depthScale, "depth_scale", 1.0f);
+    defineParam(clearDistance, "clear_distance", 60000.0f);
+  }
+
+  void init()
+  {
+    pi = 3.14159265358979f;
+    // The atmos lat-long is rotated by envRotation; turn its sun into world space.
+    float a = -envRotation * pi / 180.0f;
+    float3 s = normalize(sunDirection);
+    float3 sun = float3(s.x * cos(a) + s.z * sin(a), s.y, -s.x * sin(a) + s.z * cos(a));
+    // Into camera space with the transpose of the camera rotation.
+    float3 c = float3(camRow0.x * sun.x + camRow1.x * sun.y + camRow2.x * sun.z,
+                      camRow0.y * sun.x + camRow1.y * sun.y + camRow2.y * sun.z,
+                      camRow0.z * sun.x + camRow1.z * sun.y + camRow2.z * sun.z);
+    sunInFront = (c.z < -1e-4f && latlongPlate == 0) ? 1 : 0;
+    float u = 0.5f;
+    float v = 0.5f;
+    if (sunInFront != 0) {
+      u = 0.5f + (c.x / -c.z) * focal / haperture;
+      v = 0.5f + (c.y / -c.z) * focal / vaperture;
+    }
+    sunPixel = float2(depth.bounds.x1 + u * depth.bounds.width(), depth.bounds.y1 + v * depth.bounds.height());
+  }
+
+  // 1 for sky, 0 for terrain. Terrain far enough away is lost in the haze and casts no
+  // visible shadow, so it fades towards 1 between half and all of clearDistance.
+  float lightMask(float x, float y)
+  {
+    float d = depth(int(x), int(y)).x;
+    if (d <= 0.0f || d >= skyThreshold)
+      return 1.0f;
+    float t = clamp((d * depthScale / clearDistance - 0.5f) * 2.0f, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+  }
+
+  void process(int2 pos)
+  {
+    if (sunInFront == 0 || shaftSamples <= 0) {
+      dst() = float4(1.0f, 1.0f, 1.0f, 1.0f);
+      return;
+    }
+    float2 p = float2(pos.x + 0.5f, pos.y + 0.5f);
+    float2 stride = (sunPixel - p) * (shaftLength / shaftSamples);
+    float sum = 0.0f;
+    float weight = 0.0f;
+    float w = 1.0f;
+    for (int i = 1; i <= shaftSamples; i++) {
+      float2 q = p + stride * i;
+      sum += w * lightMask(q.x, q.y);
+      weight += w;
+      w *= shaftDecay;
+    }
+    float visibility = weight > 0.0f ? sum / weight : 1.0f;
+    dst() = float4(visibility, visibility, visibility, 1.0f);
+  }
+};
