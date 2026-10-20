@@ -7,32 +7,42 @@
 //
 //   tau    = density * H / c * (exp(-c * s / H) - exp(-c * d / H)),  c = dir.y
 //   T      = exp(-tau)
-//   result = plate * T + hazeColor(dir) * (1 - T)
+//   result = plate * T + (sunLight * V + skyLight)(dir) * (1 - T)
 //
 // where s is where the haze starts along the ray, d the surface distance and H the haze
-// height. hazeColor is the colour infinitely deep haze has in that direction: the `env`
-// input (EzAtmosScatter's atmos_haze_color lat-long) or a flat colour.
+// height. The haze light is split into the part lit by the sun (`envSun`, EzAtmosScatter's
+// atmos_haze_sun) and the part lit by the sky (`envSky`, atmos_haze_sky). V is the sun's
+// visibility: with shadows on, the ray is stepped and each point checks whether the
+// terrain blocks the sun, by walking towards the sun and comparing against the depth in
+// screen space. Shadowed air keeps its sky light and loses only the sunlight.
 //
-// With `volumetric` on, the ray is marched instead so the density can vary along it: the
-// same haze, plus a fog layer that fills everything below fogTop and fades out over
-// fogSoftness above it, all modulated by 3D fBm noise fixed in world space (it drifts
-// with noiseWind over noiseTime, so it stays put when the camera moves).
+// With `volumetric` on the density can also vary along the ray: a fog layer filling
+// everything below fogTop (soft over fogSoftness) and 3D fBm noise fixed in world space
+// that drifts with noiseWind over noiseTime.
 //
-// Light shafts: the `shafts` input (EzShafts.blink) says how much of the line towards the
-// sun is open sky. Where it crosses terrain, the haze near the sun gets less light.
+// Far away the haze light blends towards `horizonLight` (the atmosphere's own sky light
+// per unit of haze, as a ratio to the haze colour) over matchDistance, so distant terrain
+// fades into the sky behind it.
 //
-// Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the
-// EzAtmosScatter convention (centre column looks down -Z, top row up).
-// Distances are in metres, +Y is up.
+// Surfaces: from the depth the kernel rebuilds world positions and normals, and tests
+// each surface point against the sun the same way, giving the sunlight that falls on it.
 //
-// output: 0 = hazed plate, 1 = haze transmittance, 2 = haze in-scatter
+// Inputs: `plate` rgba, `depth` with the depth in red, `envSun`, `envSky` and
+// `horizonLight` lat-longs in the EzAtmosScatter convention (centre column looks down -Z,
+// top row up). Distances are in metres, +Y is up.
+//
+// output: 1 = transmittance, 3 = sunlit in-scatter (shadowed), 4 = sky-lit in-scatter,
+//         5 = sunlit in-scatter without shadows, 6 = masks (r = fog share of the
+//         in-scatter, g = wisps: the noise's density change, weighted like the in-scatter,
+//         b = surface sun visibility), 7 = surface sunlight, 8 = world position (P),
+//         9 = surface normal (N)
 
 kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
 {
   Image<eRead, eAccessPoint, eEdgeClamped> plate;
-  Image<eRead, eAccessPoint, eEdgeClamped> depth;
-  Image<eRead, eAccessRandom, eEdgeClamped> env;
-  Image<eRead, eAccessPoint, eEdgeClamped> shafts;
+  Image<eRead, eAccessRandom, eEdgeClamped> depth;
+  Image<eRead, eAccessRandom, eEdgeClamped> envSun;
+  Image<eRead, eAccessRandom, eEdgeClamped> envSky;
   Image<eRead, eAccessRandom, eEdgeClamped> horizonLight;
   Image<eWrite> dst;
 
@@ -55,6 +65,7 @@ param:
   int useEnv;
   float envRotation;
   float3 hazeColor;
+  float sunShare;
   float hazeColorGain;
   float3 hazeDensity;
   float hazeAmount;
@@ -74,18 +85,32 @@ param:
   float3 noiseWind;
   float noiseTime;
   float noiseSeed;
-  float shaftAmount;
-  float shaftFalloff;
   float3 sunDirection;
   int useFar;
   float matchDistance;
+  float sunScatter;
+  float skyScatter;
+  float shadowStrength;
+  float3 shadowFill;
+  float shadowDistance;
+  float penumbra;
+  int shadowSamples;
+  int shadowEvery;
+  float occluderThickness;
+  float3 surfaceColor;
+  float surfaceStrength;
+  int albedoFromPlate;
+  float3 albedo;
 
 local:
   float pi;
+  float3 sunWorld;
+  float3 hazeFlatSun;
+  float3 hazeFlatSky;
 
   void define()
   {
-    defineParam(output, "output", 0);
+    defineParam(output, "output", 1);
     defineParam(latlongPlate, "latlong_plate", 0);
     defineParam(camRow0, "cam_row0", float3(1.0f, 0.0f, 0.0f));
     defineParam(camRow1, "cam_row1", float3(0.0f, 1.0f, 0.0f));
@@ -103,6 +128,7 @@ local:
     defineParam(useEnv, "use_env", 1);
     defineParam(envRotation, "env_rotation", 0.0f);
     defineParam(hazeColor, "haze_color", float3(0.6f, 0.65f, 0.75f));
+    defineParam(sunShare, "sun_share", 0.5f);
     defineParam(hazeColorGain, "haze_color_gain", 1.0f);
     defineParam(hazeDensity, "haze_density", float3(0.0001f, 0.0001f, 0.0001f));
     defineParam(hazeAmount, "haze_amount", 1.0f);
@@ -122,22 +148,46 @@ local:
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
     defineParam(noiseTime, "noise_time", 0.0f);
     defineParam(noiseSeed, "noise_seed", 1.0f);
-    defineParam(shaftAmount, "shaft_amount", 0.0f);
-    defineParam(shaftFalloff, "shaft_falloff", 2.0f);
     defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
     defineParam(useFar, "use_far", 0);
     defineParam(matchDistance, "match_distance", 20000.0f);
+    defineParam(sunScatter, "sun_scatter", 1.0f);
+    defineParam(skyScatter, "sky_scatter", 1.0f);
+    defineParam(shadowStrength, "shadow_strength", 0.0f);
+    defineParam(shadowFill, "shadow_fill", float3(0.0f, 0.0f, 0.0f));
+    defineParam(shadowDistance, "shadow_distance", 20000.0f);
+    defineParam(penumbra, "penumbra", 0.5f);
+    defineParam(shadowSamples, "shadow_samples", 16);
+    defineParam(shadowEvery, "shadow_every", 4);
+    defineParam(occluderThickness, "occluder_thickness", 1e9f);
+    defineParam(surfaceColor, "surface_color", float3(1.0f, 0.8f, 0.6f));
+    defineParam(surfaceStrength, "surface_strength", 1.0f);
+    defineParam(albedoFromPlate, "albedo_from_plate", 1);
+    defineParam(albedo, "albedo", float3(0.15f, 0.15f, 0.15f));
   }
 
   void init()
   {
     pi = 3.14159265358979f;
+    // The atmos lat-long is rotated by envRotation; turn its sun into world space.
+    float a = -envRotation * pi / 180.0f;
+    float3 sd = normalize(sunDirection);
+    sunWorld = float3(sd.x * cos(a) + sd.z * sin(a), sd.y, -sd.x * sin(a) + sd.z * cos(a));
+    hazeFlatSun = hazeColor * sunShare;
+    hazeFlatSky = hazeColor * (1.0f - sunShare);
   }
 
   float3 exp3(float3 v)
   {
     return float3(exp(v.x), exp(v.y), exp(v.z));
   }
+
+  float luma(float3 c)
+  {
+    return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
+  }
+
+  // ---- Lat-long lookups --------------------------------------------------------------
 
   float2 latlongUV(float3 d)
   {
@@ -147,11 +197,19 @@ local:
     return float2(u - floor(u), lat / pi + 0.5f);
   }
 
-  float3 envLookup(float3 d)
+  float3 sunLookup(float3 d)
   {
     float2 uv = latlongUV(d);
-    float4 c = bilinear(env, env.bounds.x1 + uv.x * env.bounds.width() - 0.5f,
-                        env.bounds.y1 + uv.y * env.bounds.height() - 0.5f);
+    float4 c = bilinear(envSun, envSun.bounds.x1 + uv.x * envSun.bounds.width() - 0.5f,
+                        envSun.bounds.y1 + uv.y * envSun.bounds.height() - 0.5f);
+    return float3(c.x, c.y, c.z);
+  }
+
+  float3 skyLookup(float3 d)
+  {
+    float2 uv = latlongUV(d);
+    float4 c = bilinear(envSky, envSky.bounds.x1 + uv.x * envSky.bounds.width() - 0.5f,
+                        envSky.bounds.y1 + uv.y * envSky.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
   }
 
@@ -162,6 +220,8 @@ local:
                         horizonLight.bounds.y1 + uv.y * horizonLight.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
   }
+
+  // ---- Noise -------------------------------------------------------------------------
 
   float hash3(float3 p)
   {
@@ -205,15 +265,10 @@ local:
     return max(1.0f + noiseAmount * 2.5f * (n - 0.5f), 0.0f);
   }
 
-  // Extinction per metre at p: the base haze, thinning with height from the camera, plus
-  // the fog layer, which is full below fogTop and fades out over fogSoftness above it.
-  float3 density(float3 p, float cameraHeight)
+  float fogProfile(float y)
   {
-    float3 haze = hazeDensity * (hazeAmount * exp(-(p.y - cameraHeight) / hazeHeight));
-    float edge = clamp((p.y - fogTop) / max(fogSoftness, 1.0f) + 0.5f, 0.0f, 1.0f);
-    float fog = fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
-    float n = noiseFactor(p);
-    return (haze * (1.0f - noiseOnHaze + noiseOnHaze * n)) + float3(fog * n);
+    float edge = clamp((y - fogTop) / max(fogSoftness, 1.0f) + 0.5f, 0.0f, 1.0f);
+    return fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
   }
 
   // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray
@@ -225,123 +280,259 @@ local:
     return hazeHeight / c * (exp(-c * s / hazeHeight) - exp(-c * d / hazeHeight));
   }
 
-  void process(int2 pos)
-  {
-    float4 src = plate();
-    float rawDepth = depth().x;
+  // ---- Camera and depth --------------------------------------------------------------
 
-    float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();
-    float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();
-    float3 dir;
-    float3 origin;
-    float planarScale = 1.0f;
+  // View direction (world) through plate coordinates (u, v) in 0..1, and the factor that
+  // turns planar depth into distance along that ray.
+  float3 viewDir(float u, float v, float &planarScale)
+  {
     if (latlongPlate != 0) {
       float lon = (u - 0.5f) * 2.0f * pi;
       float lat = (v - 0.5f) * pi;
-      dir = float3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));
-      origin = float3(0.0f, latlongCameraHeight, 0.0f);
+      planarScale = 1.0f;
+      return float3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));
+    }
+    float3 camDir = float3((u - 0.5f) * haperture / focal, (v - 0.5f) * vaperture / focal, -1.0f);
+    planarScale = length(camDir);
+    return normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));
+  }
+
+  float3 cameraOrigin()
+  {
+    return latlongPlate != 0 ? float3(0.0f, latlongCameraHeight, 0.0f) : camPosition;
+  }
+
+  // Distance in metres along the ray of plate pixel (x, y); 0 for sky.
+  float distanceAt(int x, int y)
+  {
+    float raw = depth(x, y).x;
+    if (raw <= 0.0f || raw >= skyThreshold)
+      return 0.0f;
+    float u = (x - depth.bounds.x1 + 0.5f) / depth.bounds.width();
+    float v = (y - depth.bounds.y1 + 0.5f) / depth.bounds.height();
+    float planarScale;
+    viewDir(u, v, planarScale);
+    float dist = raw;
+    if (depthType == 1)
+      dist = raw * planarScale;
+    else if (depthType == 2)
+      dist = planarScale / raw;
+    return dist * depthScale;
+  }
+
+  // Where world point q lands on the plate, in pixels. Returns false if it is off the
+  // plate or behind the camera.
+  bool project(float3 q, float3 origin, float2 &pixel)
+  {
+    float3 d = q - origin;
+    float u, v;
+    if (latlongPlate != 0) {
+      float3 n = normalize(d);
+      float lon = atan2(n.x, -n.z);
+      float lat = asin(clamp(n.y, -1.0f, 1.0f));
+      u = lon / (2.0f * pi) + 0.5f;
+      v = lat / pi + 0.5f;
     } else {
-      float3 camDir = float3((u - 0.5f) * haperture / focal, (v - 0.5f) * vaperture / focal, -1.0f);
-      planarScale = length(camDir);
-      dir = normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));
-      origin = camPosition;
+      // Into camera space with the transpose of the camera rotation.
+      float cx = camRow0.x * d.x + camRow1.x * d.y + camRow2.x * d.z;
+      float cy = camRow0.y * d.x + camRow1.y * d.y + camRow2.y * d.z;
+      float cz = camRow0.z * d.x + camRow1.z * d.y + camRow2.z * d.z;
+      if (cz > -1e-3f)
+        return false;
+      u = 0.5f + (cx / -cz) * focal / haperture;
+      v = 0.5f + (cy / -cz) * focal / vaperture;
+    }
+    if (u < 0.0f || u >= 1.0f || v < 0.0f || v >= 1.0f)
+      return false;
+    pixel = float2(depth.bounds.x1 + u * depth.bounds.width(), depth.bounds.y1 + v * depth.bounds.height());
+    return true;
+  }
+
+  // ---- Screen-space sun shadows ------------------------------------------------------
+
+  // Direction towards the sun, spread over a small cone (the penumbra) by the jitter.
+  float3 jitteredSun(float j1, float j2)
+  {
+    float r = penumbra * pi / 180.0f * sqrt(j1);
+    float a = 2.0f * pi * j2;
+    float3 up = fabs(sunWorld.y) < 0.9f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+    float3 tx = normalize(cross(up, sunWorld));
+    float3 ty = cross(sunWorld, tx);
+    return normalize(sunWorld + tx * (r * cos(a)) + ty * (r * sin(a)));
+  }
+
+  // 1 if the sun reaches p, 0 if something in the depth blocks it. Steps from p towards
+  // the sun; a step is blocked when it lies behind the visible surface at the pixel it
+  // projects to (within occluderThickness of it). Steps off the plate count as clear.
+  float sunVisibility(float3 p, float3 origin, float3 sun, int samples, float jitter)
+  {
+    for (int k = 0; k < samples; k++) {
+      float f = (k + jitter) / samples;
+      float3 q = p + sun * (shadowDistance * f * f + 1.0f);
+      float2 pixel;
+      if (!project(q, origin, pixel))
+        continue;
+      float surface = distanceAt(int(pixel.x), int(pixel.y));
+      if (surface <= 0.0f)
+        continue;
+      float dq = length(q - origin);
+      float bias = 2.0f + 0.003f * dq;
+      if (dq > surface + bias && dq < surface + occluderThickness)
+        return 0.0f;
+    }
+    return 1.0f;
+  }
+
+  // ---- Main ----------------------------------------------------------------------------
+
+  void process(int2 pos)
+  {
+    float4 src = plate();
+    float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();
+    float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();
+    float planarScale;
+    float3 dir = viewDir(u, v, planarScale);
+    float3 origin = cameraOrigin();
+
+    float surfaceDist = distanceAt(pos.x, pos.y);
+    bool sky = surfaceDist <= 0.0f;
+    float3 surfacePoint = origin + dir * surfaceDist;
+
+    // Surface outputs: world position, normal from the neighbouring depths, and the sun
+    // falling on it.
+    if (output >= 7) {
+      if (sky) {
+        dst() = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+      }
+      if (output == 8) {
+        dst() = float4(surfacePoint.x, surfacePoint.y, surfacePoint.z, 1.0f);
+        return;
+      }
+      float3 pr = surfacePoint;
+      float3 pu = surfacePoint;
+      float dr = distanceAt(pos.x + 1, pos.y);
+      float du = distanceAt(pos.x, pos.y + 1);
+      float ps;
+      if (dr > 0.0f)
+        pr = origin + viewDir(u + 1.0f / plate.bounds.width(), v, ps) * dr;
+      if (du > 0.0f)
+        pu = origin + viewDir(u, v + 1.0f / plate.bounds.height(), ps) * du;
+      float3 n = cross(pr - surfacePoint, pu - surfacePoint);
+      n = length(n) > 0.0f ? normalize(n) : -dir;
+      if (dot(n, dir) > 0.0f)
+        n = -n;
+      if (output == 9) {
+        dst() = float4(n.x, n.y, n.z, 1.0f);
+        return;
+      }
+      float j = hash3(float3(pos.x, pos.y, 3.0f));
+      float3 sun = jitteredSun(hash3(float3(pos.x, pos.y, 5.0f)), hash3(float3(pos.x, pos.y, 7.0f)));
+      float vis = sunVisibility(surfacePoint + n * (1.0f + 0.001f * surfaceDist), origin, sun, shadowSamples * 2, j);
+      float3 a = albedoFromPlate != 0 ? float3(src.x, src.y, src.z) : albedo;
+      float3 lit = a * surfaceColor * (surfaceStrength * max(dot(n, sunWorld), 0.0f) * vis);
+      dst() = float4(lit.x, lit.y, lit.z, vis);
+      return;
     }
 
-    // Depth to distance along the ray, in metres.
-    float dist = rawDepth;
-    if (depthType == 1)
-      dist = rawDepth * planarScale;
-    else if (depthType == 2)
-      dist = rawDepth > 0.0f ? planarScale / rawDepth : 0.0f;
-    dist *= depthScale;
-
-    bool sky = rawDepth <= 0.0f || rawDepth >= skyThreshold;
+    // Distance the haze runs to.
+    float dist = surfaceDist;
     if (sky)
       dist = hazeSky != 0 ? skyDistance : 0.0f;
     if (maxDistance > 0.0f)
       dist = min(dist, maxDistance);
-
     float s = min(hazeStart, dist);
-    float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;
-    light *= hazeColorGain;
-    // Haze far away gets the atmosphere's own sky light: horizonLight holds, per direction,
-    // its sky light per unit of haze divided by the haze colour (held at the horizon below
-    // it). Blended in over matchDistance, so distant terrain fades into the sky behind it.
-    float3 farLight = useFar != 0 ? light * horizonLookup(dir) : light;
 
-    // Light shafts: where the line to the sun crosses terrain (shafts input from
-    // EzShafts.blink), the haze gets less sunlight. Only the part of the sky around the sun
-    // is affected, more strongly closer to it.
-    if (shaftAmount > 0.0f) {
-      float a = -envRotation * pi / 180.0f;
-      float3 sd = normalize(sunDirection);
-      float3 sunWorld = float3(sd.x * cos(a) + sd.z * sin(a), sd.y, -sd.x * sin(a) + sd.z * cos(a));
-      float near = pow(max(dot(dir, sunWorld), 0.0f), shaftFalloff);
-      float visibility = shafts().x;
-      float shade = max(1.0f - shaftAmount * near * (1.0f - visibility), 0.0f);
-      light *= shade;
-      farLight *= shade;
-    }
+    // Haze light: the sunlit and sky-lit parts, and the same far away, where they take on
+    // the atmosphere's own horizon sky.
+    float3 sunNear = (useEnv != 0 ? sunLookup(dir) : hazeFlatSun) * (hazeColorGain * sunScatter);
+    float3 skyNear = (useEnv != 0 ? skyLookup(dir) : hazeFlatSky) * (hazeColorGain * skyScatter);
+    float3 k = useFar != 0 ? horizonLookup(dir) : float3(1.0f);
+    // The horizon sky differs from the camera's light because sunlight further away is dimmer
+    // and redder; sky light is not, so the whole difference goes to the sunlit part.
+    float3 skyFar = skyNear;
+    float3 sunFar = (sunNear + skyNear) * k - skyNear;
+    sunFar = float3(max(sunFar.x, 0.0f), max(sunFar.y, 0.0f), max(sunFar.z, 0.0f));
 
-    float3 transmittance;
-    float3 inscatter;
-    if (volumetric == 0) {
-      // Density is given at camera height; heightPath measures from the camera.
-      float path = heightPath(dir.y, s, dist);
-      transmittance = exp3(-hazeDensity * (hazeAmount * path));
-      inscatter = light * (float3(1.0f) - transmittance);
-      if (useFar != 0) {
-        // Same haze, but in 16 exact slabs so the light can change with distance.
-        float3 slabT = float3(1.0f);
-        inscatter = float3(0.0f);
-        float t0 = s;
-        for (int i = 1; i <= 16; i++) {
-          float f = i / 16.0f;
-          float t1 = s + (dist - s) * f * f;
-          float3 stepT = exp3(-hazeDensity * (hazeAmount * heightPath(dir.y, t0, t1)));
-          float w = 1.0f - exp(-0.5f * (t0 + t1) / matchDistance);
-          inscatter += slabT * (float3(1.0f) - stepT) * (light + (farLight - light) * w);
-          slabT *= stepT;
-          t0 = t1;
-        }
-      }
+    bool shadows = shadowStrength > 0.0f && (output == 3);
+    bool analytic = volumetric == 0 && useFar == 0 && !shadows;
+
+    float3 transmittance = float3(1.0f);
+    float3 sunIn = float3(0.0f);
+    float3 sunFree = float3(0.0f);
+    float3 skyIn = float3(0.0f);
+    float fogWeight = 0.0f;
+    float wispWeight = 0.0f;
+    float allWeight = 0.0f;
+
+    if (analytic) {
+      transmittance = exp3(-hazeDensity * (hazeAmount * heightPath(dir.y, s, dist)));
+      float3 veil = float3(1.0f) - transmittance;
+      sunIn = sunNear * veil;
+      sunFree = sunIn;
+      skyIn = skyNear * veil;
     } else {
-      // March the ray, so the density can change along it: haze thinning with height,
-      // a fog layer below fogTop, and world-space noise. Steps are packed towards the
-      // camera (quadratic spacing) and jittered per pixel to hide banding.
-      float jitter = hash3(float3(pos.x, pos.y, 17.0f));
-      transmittance = float3(1.0f);
-      inscatter = float3(0.0f);
+      // Step the ray: quadratic spacing packs steps towards the camera, jittered per pixel.
+      // Fast mode uses exact slabs of the analytic haze; Volumetric adds fog and noise.
+      int steps = volumetric != 0 ? marchSteps : 16;
+      float jitter = volumetric != 0 ? hash3(float3(pos.x, pos.y, 17.0f)) : 1.0f;
+      float sj = hash3(float3(pos.x, pos.y, 23.0f));
+      float3 sun = jitteredSun(hash3(float3(pos.x, pos.y, 29.0f)), hash3(float3(pos.x, pos.y, 31.0f)));
+      float vis = 1.0f;
       float tPrev = s;
-      for (int i = 0; i < marchSteps; i++) {
-        float f = (i + jitter) / marchSteps;
-        float t = s + (dist - s) * f * f;
-        float dt = t - tPrev;
-        tPrev = t;
-        float3 p = origin + dir * t;
-        float3 sigma = density(p, origin.y) * dt;
+      for (int i = 0; i <= steps; i++) {
+        float t = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
+        if (t <= tPrev)
+          continue;
+        float tMid = 0.5f * (tPrev + t);
+        float3 p = origin + dir * tMid;
+        float3 sigma;
+        float fogPart = 0.0f;
+        float n = 1.0f;
+        if (volumetric != 0) {
+          n = noiseFactor(p);
+          float3 haze = hazeDensity * (hazeAmount * exp(-(p.y - origin.y) / hazeHeight));
+          float fog = fogProfile(p.y);
+          sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
+          float total = luma(sigma);
+          fogPart = total > 0.0f ? fog * n * (t - tPrev) / total : 0.0f;
+        } else {
+          sigma = hazeDensity * (hazeAmount * heightPath(dir.y, tPrev, t));
+        }
         float3 stepT = exp3(-sigma);
-        float w = useFar != 0 ? 1.0f - exp(-t / matchDistance) : 0.0f;
-        inscatter += transmittance * (float3(1.0f) - stepT) * (light + (farLight - light) * w);
+        float3 scatter = transmittance * (float3(1.0f) - stepT);
+        float w = useFar != 0 ? 1.0f - exp(-tMid / matchDistance) : 0.0f;
+        float3 sunL = sunNear + (sunFar - sunNear) * w;
+        float3 skyL = skyNear + (skyFar - skyNear) * w;
+        if (shadows && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
+          vis = sunVisibility(p, origin, sun, shadowSamples, sj);
+        float lit = vis + (1.0f - vis) * (1.0f - shadowStrength);
+        sunFree += scatter * sunL;
+        sunIn += scatter * sunL * lit;
+        skyIn += scatter * skyL;
+        float weight = luma(scatter * (sunL + skyL));
+        allWeight += weight;
+        fogWeight += weight * fogPart;
+        wispWeight += weight * (n - 1.0f);
         transmittance *= stepT;
+        tPrev = t;
       }
-      // Last stretch up to the surface.
-      float3 p = origin + dir * (0.5f * (tPrev + dist));
-      float3 stepT = exp3(-density(p, origin.y) * (dist - tPrev));
-      float wEnd = useFar != 0 ? 1.0f - exp(-dist / matchDistance) : 0.0f;
-      inscatter += transmittance * (float3(1.0f) - stepT) * (light + (farLight - light) * wEnd);
-      transmittance *= stepT;
+      // Some of the lost sunlight can be put back, tinted, for an artistic fill.
+      sunIn += shadowFill * (sunFree - sunIn);
     }
 
-    float3 rgb = float3(src.x, src.y, src.z) * transmittance + inscatter;
-    float alpha = src.w;
-    if (output == 1) {
-      rgb = transmittance;
-      alpha = 1.0f;
-    } else if (output == 2) {
-      rgb = inscatter;
-      alpha = 1.0f;
+    float3 rgb = transmittance;
+    if (output == 3)
+      rgb = sunIn;
+    else if (output == 4)
+      rgb = skyIn;
+    else if (output == 5)
+      rgb = sunFree;
+    else if (output == 6) {
+      float fogShare = allWeight > 0.0f ? fogWeight / allWeight : 0.0f;
+      float wisps = allWeight > 0.0f ? wispWeight / allWeight : 0.0f;
+      rgb = float3(fogShare, wisps, 0.0f);
     }
-    dst() = float4(rgb.x, rgb.y, rgb.z, alpha);
+    dst() = float4(rgb.x, rgb.y, rgb.z, 1.0f);
   }
 };
