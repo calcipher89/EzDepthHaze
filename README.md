@@ -119,6 +119,13 @@ shafts.
 
 `examples/DemoTerrain.blink` renders a procedural mountain range through a Nuke camera,
 with distance in alpha, so the node can be tried without a CG render.
+`examples/build_demo.py` builds a full sunset scene with it (needs EzAtmosScatter too):
+
+```
+Nuke15.1.exe --nukex -i --gpu -t examples/build_demo.py <output folder>
+```
+
+It renders the terrain once to `demo_terrain.exr` and saves `ezdepthhaze_demo.nk`.
 
 ## Rebuilding the gizmo
 
