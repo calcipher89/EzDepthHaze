@@ -1,0 +1,174 @@
+// EzDepthHaze: hazes a plate with its depth, lit like EzAtmosScatter's haze.
+//
+// For every pixel the kernel finds the view direction (from the camera, or from the
+// lat-long position), converts its depth to metres, and works out how much haze lies
+// between the camera and the surface. The haze thins exponentially with altitude, so
+// looking up clears faster than looking sideways:
+//
+//   tau    = density * H / c * (exp(-c * s / H) - exp(-c * d / H)),  c = dir.y
+//   T      = exp(-tau)
+//   result = plate * T + hazeColor(dir) * (1 - T)
+//
+// where s is where the haze starts along the ray, d the surface distance and H the haze
+// height. hazeColor is the colour infinitely deep haze has in that direction: the `env`
+// input (EzAtmosScatter's atmos_haze_color lat-long) or a flat colour.
+//
+// Inputs: `plate` rgba, `depth` with the depth in red, `env` a lat-long in the
+// EzAtmosScatter convention (centre column looks down -Z, top row up).
+// Distances are in metres, +Y is up.
+//
+// output: 0 = hazed plate, 1 = haze transmittance, 2 = haze in-scatter
+
+kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
+{
+  Image<eRead, eAccessPoint, eEdgeClamped> plate;
+  Image<eRead, eAccessPoint, eEdgeClamped> depth;
+  Image<eRead, eAccessRandom, eEdgeClamped> env;
+  Image<eWrite> dst;
+
+param:
+  int output;
+  int latlongPlate;
+  float3 camRow0;
+  float3 camRow1;
+  float3 camRow2;
+  float3 camPosition;
+  float focal;
+  float haperture;
+  float vaperture;
+  float latlongCameraHeight;
+  int depthType;
+  float depthScale;
+  float skyThreshold;
+  int hazeSky;
+  float skyDistance;
+  int useEnv;
+  float envRotation;
+  float3 hazeColor;
+  float hazeColorGain;
+  float3 hazeDensity;
+  float hazeAmount;
+  float hazeHeight;
+  float hazeStart;
+  float maxDistance;
+
+local:
+  float pi;
+
+  void define()
+  {
+    defineParam(output, "output", 0);
+    defineParam(latlongPlate, "latlong_plate", 0);
+    defineParam(camRow0, "cam_row0", float3(1.0f, 0.0f, 0.0f));
+    defineParam(camRow1, "cam_row1", float3(0.0f, 1.0f, 0.0f));
+    defineParam(camRow2, "cam_row2", float3(0.0f, 0.0f, 1.0f));
+    defineParam(camPosition, "cam_position", float3(0.0f, 0.0f, 0.0f));
+    defineParam(focal, "focal", 35.0f);
+    defineParam(haperture, "haperture", 36.0f);
+    defineParam(vaperture, "vaperture", 20.25f);
+    defineParam(latlongCameraHeight, "latlong_camera_height", 1.0f);
+    defineParam(depthType, "depth_type", 0);
+    defineParam(depthScale, "depth_scale", 1.0f);
+    defineParam(skyThreshold, "sky_threshold", 1e7f);
+    defineParam(hazeSky, "haze_sky", 0);
+    defineParam(skyDistance, "sky_distance", 50000.0f);
+    defineParam(useEnv, "use_env", 1);
+    defineParam(envRotation, "env_rotation", 0.0f);
+    defineParam(hazeColor, "haze_color", float3(0.6f, 0.65f, 0.75f));
+    defineParam(hazeColorGain, "haze_color_gain", 1.0f);
+    defineParam(hazeDensity, "haze_density", float3(0.0001f, 0.0001f, 0.0001f));
+    defineParam(hazeAmount, "haze_amount", 1.0f);
+    defineParam(hazeHeight, "haze_height", 1200.0f);
+    defineParam(hazeStart, "haze_start", 0.0f);
+    defineParam(maxDistance, "max_distance", 0.0f);
+  }
+
+  void init()
+  {
+    pi = 3.14159265358979f;
+  }
+
+  float3 exp3(float3 v)
+  {
+    return float3(exp(v.x), exp(v.y), exp(v.z));
+  }
+
+  float3 envLookup(float3 d)
+  {
+    float lon = atan2(d.x, -d.z) - envRotation * pi / 180.0f;
+    float lat = asin(clamp(d.y, -1.0f, 1.0f));
+    float u = lon / (2.0f * pi) + 0.5f;
+    u = u - floor(u);
+    float v = lat / pi + 0.5f;
+    float x = env.bounds.x1 + u * env.bounds.width() - 0.5f;
+    float y = env.bounds.y1 + v * env.bounds.height() - 0.5f;
+    float4 c = bilinear(env, x, y);
+    return float3(c.x, c.y, c.z);
+  }
+
+  // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray
+  // through haze that thins with height.
+  float heightPath(float c, float s, float d)
+  {
+    if (fabs(c) * (d - s) / hazeHeight < 1e-4f)
+      return (d - s) * exp(-c * s / hazeHeight);
+    return hazeHeight / c * (exp(-c * s / hazeHeight) - exp(-c * d / hazeHeight));
+  }
+
+  void process(int2 pos)
+  {
+    float4 src = plate();
+    float rawDepth = depth().x;
+
+    float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();
+    float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();
+    float3 dir;
+    float3 origin;
+    float planarScale = 1.0f;
+    if (latlongPlate != 0) {
+      float lon = (u - 0.5f) * 2.0f * pi;
+      float lat = (v - 0.5f) * pi;
+      dir = float3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));
+      origin = float3(0.0f, latlongCameraHeight, 0.0f);
+    } else {
+      float3 camDir = float3((u - 0.5f) * haperture / focal, (v - 0.5f) * vaperture / focal, -1.0f);
+      planarScale = length(camDir);
+      dir = normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));
+      origin = camPosition;
+    }
+
+    // Depth to distance along the ray, in metres.
+    float dist = rawDepth;
+    if (depthType == 1)
+      dist = rawDepth * planarScale;
+    else if (depthType == 2)
+      dist = rawDepth > 0.0f ? planarScale / rawDepth : 0.0f;
+    dist *= depthScale;
+
+    bool sky = rawDepth <= 0.0f || dist >= skyThreshold;
+    if (sky)
+      dist = hazeSky != 0 ? skyDistance : 0.0f;
+    if (maxDistance > 0.0f)
+      dist = min(dist, maxDistance);
+
+    float s = min(hazeStart, dist);
+    // Density is given at camera height; heightPath measures from the camera.
+    float path = heightPath(dir.y, s, dist);
+    float3 transmittance = exp3(-hazeDensity * (hazeAmount * path));
+
+    float3 light = useEnv != 0 ? envLookup(dir) : hazeColor;
+    light *= hazeColorGain;
+    float3 inscatter = light * (float3(1.0f) - transmittance);
+
+    float3 rgb = float3(src.x, src.y, src.z) * transmittance + inscatter;
+    float alpha = src.w;
+    if (output == 1) {
+      rgb = transmittance;
+      alpha = 1.0f;
+    } else if (output == 2) {
+      rgb = inscatter;
+      alpha = 1.0f;
+    }
+    dst() = float4(rgb.x, rgb.y, rgb.z, alpha);
+  }
+};
