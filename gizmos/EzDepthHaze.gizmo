@@ -15,6 +15,9 @@ Gizmo {
  tile_color 0x6a8fa5ff
  selected true
  addUserKnob {20 ezdepthhaze l EzDepthHaze}
+ addUserKnob {4 preset t "A starting look. Pick one and press apply; every knob stays editable afterwards. Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\nClear Day: sun high, 30-45 degrees, from the side.\nGolden Hour: sun low, 2-6 degrees, in front of the camera.\nValley Fog: sun low morning sun, 8-15 degrees.\nSmoke Haze: sun any; a dimmed, reddened sun reads best.\nOvercast Mist: sun any; it hardly shows." M {"Clear Day" "Golden Hour" "Valley Fog" "Smoke Haze" "Overcast Mist"}}
+ preset "Golden Hour"
+ addUserKnob {22 apply_preset l apply t "Sets the knobs of the chosen preset." -STARTLINE T "import ezdepthhaze; ezdepthhaze.apply_preset(nuke.thisNode())"}
  addUserKnob {4 view_output l "view output" t "What the main rgb shows. Every pass is also written to its own layer: plate * haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result." M {"Hazed Plate" "Haze Transmittance" "Haze In-scatter" "Haze Sun" "Haze Sky" "Haze Shadow" "Haze Fog" "Haze Wisps" "Surface Sunlight" "Surface Sun Visibility" "World Position (P)" "Normals (N)"}}
  addUserKnob {26 plate_divider l Plate}
  addUserKnob {4 plate_type l plate t "Camera: a perspective render or plate, with its Camera plugged into the 'camera' input. Lat-long: a 360 lat-long render, such as an environment of the mountains." M {Camera Lat-long}}
@@ -44,6 +47,8 @@ Gizmo {
  haze_color {0.6 0.65 0.75}
  addUserKnob {7 haze_color_gain l "haze brightness" t "Multiplies the haze colour." R 0 4}
  haze_color_gain 1
+ addUserKnob {18 haze_tint l "haze tint" t "Tints all the haze light, e.g. warm brown for smoke. White leaves it as the atmosphere made it."}
+ haze_tint {1 1 1}
  addUserKnob {18 haze_density l "haze density (1/m)" t "How much the haze dims light per metre at camera height. Ignored when inheriting."}
  haze_density {0.0001 0.0001 0.0001}
  addUserKnob {7 haze_amount l "haze amount" t "Multiplies the haze density." R 0 10}
@@ -119,7 +124,7 @@ Gizmo {
   ypos -300
   number 2
  }
-set Nfc214800 [stack 0]
+set N7fe14800 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   in1 none
@@ -128,7 +133,7 @@ set Nfc214800 [stack 0]
   xpos 750
   ypos -200
  }
-push $Nfc214800
+push $N7fe14800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 none
@@ -153,7 +158,7 @@ push $Nfc214800
   xpos 750
   ypos -120
  }
-push $Nfc214800
+push $N7fe14800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 none
@@ -162,7 +167,7 @@ push $Nfc214800
   xpos 600
   ypos -200
  }
-set Nfc215000 [stack 0]
+set N7fe15000 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -170,7 +175,7 @@ set Nfc215000 [stack 0]
   xpos 650
   ypos -170
  }
-push $Nfc214800
+push $N7fe14800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 none
@@ -186,8 +191,8 @@ push $Nfc214800
   xpos 500
   ypos -140
  }
-set Nfc23cf00 [stack 0]
-push $Nfc215000
+set N7fe3cf00 [stack 0]
+push $N7fe15000
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -195,7 +200,7 @@ push $Nfc215000
   xpos 600
   ypos -170
  }
-push $Nfc214800
+push $N7fe14800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 none
@@ -211,7 +216,7 @@ push $Nfc214800
   xpos 450
   ypos -140
  }
-set Nfc23ca00 [stack 0]
+set N7fe3ca00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -262,17 +267,33 @@ set Nfc23ca00 [stack 0]
   xpos 750
   ypos -30
  }
-set Nfc296c00 [stack 0]
-push $Nfc23cf00
-push $Nfc23ca00
+set N7fe96c00 [stack 0]
+push $N7fe3cf00
+ Multiply {
+  channels rgb
+  value {{parent.haze_tint.r}}
+  name HazeSkyTint
+  xpos 500
+  ypos -80
+ }
+set N7fe97400 [stack 0]
+push $N7fe3ca00
+ Multiply {
+  channels rgb
+  value {{parent.haze_tint.r}}
+  name HazeSunTint
+  xpos 450
+  ypos -80
+ }
+set N7fe97000 [stack 0]
  Input {
   inputs 0
   name plate
   xpos 0
   ypos -300
  }
-set Nfc214000 [stack 0]
-push $Nfc214000
+set N7fe14000 [stack 0]
+push $N7fe14000
  Copy {
   inputs 2
   from0 depth.Z
@@ -281,8 +302,8 @@ push $Nfc214000
   xpos 150
   ypos -200
  }
-set Nfc214c00 [stack 0]
-push $Nfc214000
+set N7fe14c00 [stack 0]
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -348,12 +369,12 @@ push $Nfc214000
   xpos 540
   ypos -80
  }
-set Nad884c00 [stack 0]
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N7feed400 [stack 0]
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -419,12 +440,12 @@ push $Nfc214000
   xpos 420
   ypos -80
  }
-set Nad884800 [stack 0]
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N7feed000 [stack 0]
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -490,7 +511,7 @@ push $Nfc214000
   xpos 300
   ypos -80
  }
-set Nad884400 [stack 0]
+set N7feecc00 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -498,20 +519,20 @@ set Nad884400 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set Nad8ee400 [stack 0]
-push $Nad884400
+set N2e4fcc00 [stack 0]
+push $N7feecc00
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set Nad8ee800 [stack 0]
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N2e4fd000 [stack 0]
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -577,7 +598,7 @@ push $Nfc214000
   xpos 180
   ypos -80
  }
-set Nad884000 [stack 0]
+set N7feec800 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -585,8 +606,8 @@ set Nad884000 [stack 0]
   name Wisps
   xpos 360
  }
-set Nad8ee000 [stack 0]
-push $Nad884000
+set N2e4fc800 [stack 0]
+push $N7feec800
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -594,11 +615,11 @@ push $Nad884000
   name FogShare
   xpos 240
  }
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -664,12 +685,12 @@ push $Nfc214000
   xpos -60
   ypos -80
  }
-set Nfc297800 [stack 0]
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N7feec000 [stack 0]
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -735,7 +756,7 @@ push $Nfc214000
   xpos -180
   ypos -80
  }
-set Nfc297400 [stack 0]
+set N7fe97c00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -743,7 +764,7 @@ set Nfc297400 [stack 0]
   name InScatter
   xpos 0
  }
-set Nad885000 [stack 0]
+set N7feed800 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -752,13 +773,13 @@ set Nad885000 [stack 0]
   xpos 240
   ypos 40
  }
-set Nad885c00 [stack 0]
-push $Nfc297400
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N2e4fc400 [stack 0]
+push $N7fe97c00
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -831,15 +852,15 @@ push $Nfc214000
   name ShadowLoss
   xpos 120
  }
-set Nad885400 [stack 0]
-push $Nfc297800
-push $Nfc297400
-push $Nad885000
-push $Nfc296c00
-push $Nfc23cf00
-push $Nfc23ca00
-push $Nfc214c00
-push $Nfc214000
+set N7feedc00 [stack 0]
+push $N7feec000
+push $N7fe97c00
+push $N7feed800
+push $N7fe96c00
+push $N7fe97400
+push $N7fe97000
+push $N7fe14c00
+push $N7fe14000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -905,21 +926,21 @@ push $Nfc214000
   xpos -300
   ypos -80
  }
-set Nfc297000 [stack 0]
-push $Nad884c00
-push $Nad884800
-push $Nad8ee400
-push $Nad8ee800
-push $Nad8ee000
-push $Nad885c00
-push $Nad885400
-push $Nfc297800
-push $Nfc297400
-push $Nad885000
-push $Nfc297000
-push $Nad885000
-push $Nfc297000
-push $Nad8ee800
+set N7fe97800 [stack 0]
+push $N7feed400
+push $N7feed000
+push $N2e4fcc00
+push $N2e4fd000
+push $N2e4fc800
+push $N2e4fc400
+push $N7feedc00
+push $N7feec000
+push $N7fe97c00
+push $N7feed800
+push $N7fe97800
+push $N7feed800
+push $N7fe97800
+push $N2e4fd000
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -927,7 +948,7 @@ push $Nad8ee800
   xpos 600
   ypos 40
  }
-push $Nfc214000
+push $N7fe14000
  Merge2 {
   inputs 2
   operation plus
@@ -959,7 +980,7 @@ push $Nfc214000
   xpos 0
   ypos 200
  }
-push $Nfc214000
+push $N7fe14000
  Copy {
   inputs 2
   channels rgb
