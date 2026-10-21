@@ -1,5 +1,8 @@
 """Preset looks for the EzDepthHaze gizmo.
 
+Used when building the gizmo: python/build_gizmo.py bakes these values into the gizmo's
+"apply" button, so Nuke needs no Python module at run time. Edit them here and rebuild.
+
 Each preset only sets EzDepthHaze knobs; artists keep tweaking afterwards. Altitudes are
 given relative to the camera (negative = below it), so a preset works whatever the scale
 of the scene. The sun itself lives on EzAtmosScatter; each preset suggests one.

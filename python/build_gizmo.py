@@ -22,6 +22,9 @@ GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
 LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_shadow", "haze_fog",
           "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N"]
+# EzAtmosScatter layers the gizmo reads. They must exist when it is built and loaded, or the
+# Shuffles picking them fall back to rgba.
+ATMOS_LAYERS = ["atmos_haze_color", "atmos_haze_sun", "atmos_haze_sky", "atmos_inscatter", "atmos_transmittance"]
 # (menu label, key of the node that feeds the main rgb)
 VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"),
                 ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
@@ -59,6 +62,27 @@ def _double(name, label, lo, hi, tip, value):
     return knob, value
 
 
+def _preset_script():
+    """The apply button's script, with the preset values baked in, so the gizmo needs no
+    Python module at run time. python/ezdepthhaze.py is where the values are edited."""
+    presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"]})
+                   for name, p in ezdepthhaze.PRESETS)
+    return "\n".join([
+        "n = nuke.thisNode()",
+        "presets = %r" % presets,
+        "p = presets[n['preset'].value()]",
+        "for k, v in p['knobs'].items():",
+        "    n[k].setValue(v)",
+        "if p['fog_below_camera'] is not None:",
+        "    cam = n.input(1)",
+        "    if n['plate_type'].getValue() == 0 and cam is not None and cam.knob('world_matrix'):",
+        "        height = cam['world_matrix'].getValue(7)",
+        "    else:",
+        "        height = n['latlong_camera_height'].getValue()",
+        "    n['fog_top'].setValue(height - p['fog_below_camera'])",
+    ])
+
+
 def _add_knobs(group, depth_pick, env_pick):
     k = []
     defaults = {}
@@ -74,8 +98,7 @@ def _add_knobs(group, depth_pick, env_pick):
                       "Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\n"
                       + ezdepthhaze.preset_tooltip())
     add(preset, 1)
-    apply = nuke.PyScript_Knob("apply_preset", "apply",
-                               "import ezdepthhaze; ezdepthhaze.apply_preset(nuke.thisNode())")
+    apply = nuke.PyScript_Knob("apply_preset", "apply", _preset_script())
     apply.setTooltip("Sets the knobs of the chosen preset.")
     add(apply)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
@@ -292,7 +315,7 @@ def _link_haze(node, output):
 
 
 def build():
-    for layer in LAYERS:
+    for layer in LAYERS + ATMOS_LAYERS:
         nuke.Layer(layer, ["%s.red" % layer, "%s.green" % layer, "%s.blue" % layer])
 
     group = nuke.nodes.Group(name="EzDepthHaze1")
@@ -478,7 +501,7 @@ def save_gizmo(group, path=GIZMO_PATH):
     os.remove(tmp)
     body = body.replace("Group {", "Gizmo {", 1)
     header = "version %d.%d v%d\n" % (nuke.NUKE_VERSION_MAJOR, nuke.NUKE_VERSION_MINOR, nuke.NUKE_VERSION_RELEASE)
-    for layer in LAYERS:
+    for layer in LAYERS + ATMOS_LAYERS:
         header += "add_layer {%s %s.red %s.green %s.blue}\n" % (layer, layer, layer, layer)
     with open(path, "w") as f:
         f.write(header + body[body.index("Gizmo {"):])
