@@ -55,7 +55,7 @@ def camera_height(node):
     """Height of the camera the node hazes from: the camera input, or the lat-long knob."""
     cam = node.input(1)
     if node["plate_type"].getValue() == 0 and cam is not None and cam.knob("world_matrix"):
-        return cam["world_matrix"].getValue(7)
+        return cam["world_matrix"].getValue(7) * node["depth_scale"].getValue()
     return node["latlong_camera_height"].getValue()
 
 
