@@ -10,6 +10,11 @@ add_layer {surface_sunlight surface_sunlight.red surface_sunlight.green surface_
 add_layer {surface_sun_visibility surface_sun_visibility.red surface_sun_visibility.green surface_sun_visibility.blue}
 add_layer {P P.red P.green P.blue}
 add_layer {N N.red N.green N.blue}
+add_layer {atmos_haze_color atmos_haze_color.red atmos_haze_color.green atmos_haze_color.blue}
+add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
+add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
+add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
+add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
 Gizmo {
  name EzDepthHaze1
  tile_color 0x6a8fa5ff
@@ -124,20 +129,24 @@ Gizmo {
   ypos -300
   number 2
  }
-set N62b74800 [stack 0]
+set Nc44e4800 [stack 0]
+add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
  Shuffle2 {
   fromInput1 {{0} B}
-  in1 none
+  in1 atmos_inscatter
   fromInput2 {{0} B}
+  mappings "4 atmos_inscatter.red 0 0 rgba.red 0 0 atmos_inscatter.green 0 1 rgba.green 0 1 atmos_inscatter.blue 0 2 rgba.blue 0 2 black -1 -1 rgba.alpha 0 3"
   name AtmosSkyScatter
   xpos 750
   ypos -200
  }
-push $N62b74800
+push $Nc44e4800
+add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
  Shuffle2 {
   fromInput1 {{0} B}
-  in1 none
+  in1 atmos_transmittance
   fromInput2 {{0} B}
+  mappings "4 atmos_transmittance.red 0 0 rgba.red 0 0 atmos_transmittance.green 0 1 rgba.green 0 1 atmos_transmittance.blue 0 2 rgba.blue 0 2 black -1 -1 rgba.alpha 0 3"
   name AtmosSkyTransmittance
   xpos 900
   ypos -200
@@ -158,16 +167,17 @@ push $N62b74800
   xpos 750
   ypos -120
  }
-push $N62b74800
+push $Nc44e4800
  Shuffle2 {
   fromInput1 {{0} B}
-  in1 none
+  in1 atmos_haze_color
   fromInput2 {{0} B}
+  mappings "4 atmos_haze_color.red 0 0 rgba.red 0 0 atmos_haze_color.green 0 1 rgba.green 0 1 atmos_haze_color.blue 0 2 rgba.blue 0 2 black -1 -1 rgba.alpha 0 3"
   name AtmosPick
   xpos 600
   ypos -200
  }
-set N62b75000 [stack 0]
+set Nc44e5000 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -175,11 +185,13 @@ set N62b75000 [stack 0]
   xpos 650
   ypos -170
  }
-push $N62b74800
+push $Nc44e4800
+add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
  Shuffle2 {
   fromInput1 {{0} B}
-  in1 none
+  in1 atmos_haze_sky
   fromInput2 {{0} B}
+  mappings "4 atmos_haze_sky.red 0 0 rgba.red 0 0 atmos_haze_sky.green 0 1 rgba.green 0 1 atmos_haze_sky.blue 0 2 rgba.blue 0 2 black -1 -1 rgba.alpha 0 3"
   name AtmosSkyPick
   xpos 500
   ypos -200
@@ -191,8 +203,8 @@ push $N62b74800
   xpos 500
   ypos -140
  }
-set N62b9cf00 [stack 0]
-push $N62b75000
+set Nc450cf00 [stack 0]
+push $Nc44e5000
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -200,11 +212,13 @@ push $N62b75000
   xpos 600
   ypos -170
  }
-push $N62b74800
+push $Nc44e4800
+add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
  Shuffle2 {
   fromInput1 {{0} B}
-  in1 none
+  in1 atmos_haze_sun
   fromInput2 {{0} B}
+  mappings "4 atmos_haze_sun.red 0 0 rgba.red 0 0 atmos_haze_sun.green 0 1 rgba.green 0 1 atmos_haze_sun.blue 0 2 rgba.blue 0 2 black -1 -1 rgba.alpha 0 3"
   name AtmosSunPick
   xpos 450
   ypos -200
@@ -216,7 +230,7 @@ push $N62b74800
   xpos 450
   ypos -140
  }
-set N62b9ca00 [stack 0]
+set Nc450ca00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -267,8 +281,8 @@ set N62b9ca00 [stack 0]
   xpos 750
   ypos -30
  }
-set N62bf6c00 [stack 0]
-push $N62b9cf00
+set Nc4566c00 [stack 0]
+push $Nc450cf00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -276,8 +290,8 @@ push $N62b9cf00
   xpos 500
   ypos -80
  }
-set N62bf7400 [stack 0]
-push $N62b9ca00
+set Nc4567400 [stack 0]
+push $Nc450ca00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -285,15 +299,15 @@ push $N62b9ca00
   xpos 450
   ypos -80
  }
-set N62bf7000 [stack 0]
+set Nc4567000 [stack 0]
  Input {
   inputs 0
   name plate
   xpos 0
   ypos -300
  }
-set N62b74000 [stack 0]
-push $N62b74000
+set Nc44e4000 [stack 0]
+push $Nc44e4000
  Copy {
   inputs 2
   from0 depth.Z
@@ -302,8 +316,8 @@ push $N62b74000
   xpos 150
   ypos -200
  }
-set N62b74c00 [stack 0]
-push $N62b74000
+set Nc44e4c00 [stack 0]
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -369,12 +383,12 @@ push $N62b74000
   xpos 540
   ypos -80
  }
-set N62c4d400 [stack 0]
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Nc45bd400 [stack 0]
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -440,12 +454,12 @@ push $N62b74000
   xpos 420
   ypos -80
  }
-set N62c4d000 [stack 0]
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Nc45bd000 [stack 0]
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -511,7 +525,7 @@ push $N62b74000
   xpos 300
   ypos -80
  }
-set N62c4cc00 [stack 0]
+set Nc45bcc00 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -519,20 +533,20 @@ set N62c4cc00 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set N1210cc00 [stack 0]
-push $N62c4cc00
+set Na64ecc00 [stack 0]
+push $Nc45bcc00
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set N1210d000 [stack 0]
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Na64ed000 [stack 0]
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -598,7 +612,7 @@ push $N62b74000
   xpos 180
   ypos -80
  }
-set N62c4c800 [stack 0]
+set Nc45bc800 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -606,8 +620,8 @@ set N62c4c800 [stack 0]
   name Wisps
   xpos 360
  }
-set N1210c800 [stack 0]
-push $N62c4c800
+set Na64ec800 [stack 0]
+push $Nc45bc800
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -615,11 +629,11 @@ push $N62c4c800
   name FogShare
   xpos 240
  }
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -685,12 +699,12 @@ push $N62b74000
   xpos -60
   ypos -80
  }
-set N62c4c000 [stack 0]
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Nc45bc000 [stack 0]
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -756,7 +770,7 @@ push $N62b74000
   xpos -180
   ypos -80
  }
-set N62bf7c00 [stack 0]
+set Nc4567c00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -764,7 +778,7 @@ set N62bf7c00 [stack 0]
   name InScatter
   xpos 0
  }
-set N62c4d800 [stack 0]
+set Nc45bd800 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -773,13 +787,13 @@ set N62c4d800 [stack 0]
   xpos 240
   ypos 40
  }
-set N1210c400 [stack 0]
-push $N62bf7c00
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Na64ec400 [stack 0]
+push $Nc4567c00
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -852,15 +866,15 @@ push $N62b74000
   name ShadowLoss
   xpos 120
  }
-set N62c4dc00 [stack 0]
-push $N62c4c000
-push $N62bf7c00
-push $N62c4d800
-push $N62bf6c00
-push $N62bf7400
-push $N62bf7000
-push $N62b74c00
-push $N62b74000
+set Nc45bdc00 [stack 0]
+push $Nc45bc000
+push $Nc4567c00
+push $Nc45bd800
+push $Nc4566c00
+push $Nc4567400
+push $Nc4567000
+push $Nc44e4c00
+push $Nc44e4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -926,21 +940,21 @@ push $N62b74000
   xpos -300
   ypos -80
  }
-set N62bf7800 [stack 0]
-push $N62c4d400
-push $N62c4d000
-push $N1210cc00
-push $N1210d000
-push $N1210c800
-push $N1210c400
-push $N62c4dc00
-push $N62c4c000
-push $N62bf7c00
-push $N62c4d800
-push $N62bf7800
-push $N62c4d800
-push $N62bf7800
-push $N1210d000
+set Nc4567800 [stack 0]
+push $Nc45bd400
+push $Nc45bd000
+push $Na64ecc00
+push $Na64ed000
+push $Na64ec800
+push $Na64ec400
+push $Nc45bdc00
+push $Nc45bc000
+push $Nc4567c00
+push $Nc45bd800
+push $Nc4567800
+push $Nc45bd800
+push $Nc4567800
+push $Na64ed000
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -948,7 +962,7 @@ push $N1210d000
   xpos 600
   ypos 40
  }
-push $N62b74000
+push $Nc44e4000
  Merge2 {
   inputs 2
   operation plus
@@ -980,7 +994,7 @@ push $N62b74000
   xpos 0
   ypos 200
  }
-push $N62b74000
+push $Nc44e4000
  Copy {
   inputs 2
   channels rgb

@@ -22,6 +22,9 @@ GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
 LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_shadow", "haze_fog",
           "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N"]
+# EzAtmosScatter layers the gizmo reads. They must exist when it is built and loaded, or the
+# Shuffles picking them fall back to rgba.
+ATMOS_LAYERS = ["atmos_haze_color", "atmos_haze_sun", "atmos_haze_sky", "atmos_inscatter", "atmos_transmittance"]
 # (menu label, key of the node that feeds the main rgb)
 VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"),
                 ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
@@ -312,7 +315,7 @@ def _link_haze(node, output):
 
 
 def build():
-    for layer in LAYERS:
+    for layer in LAYERS + ATMOS_LAYERS:
         nuke.Layer(layer, ["%s.red" % layer, "%s.green" % layer, "%s.blue" % layer])
 
     group = nuke.nodes.Group(name="EzDepthHaze1")
@@ -498,7 +501,7 @@ def save_gizmo(group, path=GIZMO_PATH):
     os.remove(tmp)
     body = body.replace("Group {", "Gizmo {", 1)
     header = "version %d.%d v%d\n" % (nuke.NUKE_VERSION_MAJOR, nuke.NUKE_VERSION_MINOR, nuke.NUKE_VERSION_RELEASE)
-    for layer in LAYERS:
+    for layer in LAYERS + ATMOS_LAYERS:
         header += "add_layer {%s %s.red %s.green %s.blue}\n" % (layer, layer, layer, layer)
     with open(path, "w") as f:
         f.write(header + body[body.index("Gizmo {"):])
