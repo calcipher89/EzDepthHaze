@@ -299,7 +299,8 @@ local:
 
   float3 cameraOrigin()
   {
-    return latlongPlate != 0 ? float3(0.0f, latlongCameraHeight, 0.0f) : camPosition;
+    // The camera is in scene units like the depth, so it takes the same scale to metres.
+    return latlongPlate != 0 ? float3(0.0f, latlongCameraHeight, 0.0f) : camPosition * depthScale;
   }
 
   // Distance in metres along the ray of plate pixel (x, y); 0 for sky.

@@ -76,7 +76,7 @@ def _preset_script():
         "if p['fog_below_camera'] is not None:",
         "    cam = n.input(1)",
         "    if n['plate_type'].getValue() == 0 and cam is not None and cam.knob('world_matrix'):",
-        "        height = cam['world_matrix'].getValue(7)",
+        "        height = cam['world_matrix'].getValue(7) * n['depth_scale'].getValue()",
         "    else:",
         "        height = n['latlong_camera_height'].getValue()",
         "    n['fog_top'].setValue(height - p['fog_below_camera'])",
@@ -120,7 +120,7 @@ def _add_knobs(group, depth_pick, env_pick):
                           "depth along the camera's view axis (Arnold/V-Ray Z). 1/Z: Nuke's ScanlineRender.")
     add(depth_type)
     add(*_double("depth_scale", "units to metres", 0.001, 100,
-                 "Multiplies depth to get metres, e.g. 0.01 for centimetres.", 1.0))
+                 "Scene units to metres, e.g. 0.01 for centimetres. Scales the depth and the camera position.", 1.0))
     add(*_double("latlong_camera_height", "camera height (m)", 0, 5000,
                  "Camera height above sea level for lat-long plates. Camera plates use the camera's height.", 1.0))
     sky = nuke.Enumeration_Knob("sky_handling", "sky", ["Leave Sky", "Haze Sky"])

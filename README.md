@@ -47,7 +47,7 @@ channel of the plate and adds the layers listed under Layers below.
 | plate | Camera | Camera (perspective, uses the `camera` input) or Lat-long |
 | depth channel | depth.Z | Where the depth is |
 | depth type | Distance | Distance from the camera, Planar Z (along the view axis) or 1/Z (ScanlineRender) |
-| units to metres | 1 | Depth multiplier, e.g. 0.01 for centimetres |
+| units to metres | 1 | Scene units to metres, e.g. 0.01 for centimetres. Scales the depth and the camera position |
 | camera height (m) | 1 | Camera height for lat-long plates |
 | sky | Leave Sky | Pixels with no depth: leave them, or haze them as if *sky distance* away |
 | sky distance (km) | 50 | Distance used for sky pixels with Haze Sky |
