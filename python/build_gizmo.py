@@ -10,10 +10,13 @@ atmos_haze_color layer lights the haze and whose haze settings can be inherited.
 """
 
 import os
+import sys
 
 import nuke
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "python"))
+import ezdepthhaze  # noqa: E402  (preset names)
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -66,6 +69,15 @@ def _add_knobs(group, depth_pick, env_pick):
             defaults[knob.name()] = value
 
     add(nuke.Tab_Knob("ezdepthhaze", "EzDepthHaze"))
+    preset = nuke.Enumeration_Knob("preset", "preset", ezdepthhaze.PRESET_NAMES)
+    preset.setTooltip("A starting look. Pick one and press apply; every knob stays editable afterwards. "
+                      "Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\n"
+                      + ezdepthhaze.preset_tooltip())
+    add(preset, 1)
+    apply = nuke.PyScript_Knob("apply_preset", "apply",
+                               "import ezdepthhaze; ezdepthhaze.apply_preset(nuke.thisNode())")
+    apply.setTooltip("Sets the knobs of the chosen preset.")
+    add(apply)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
     view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
                     "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")
@@ -128,6 +140,9 @@ def _add_knobs(group, depth_pick, env_pick):
     color.setTooltip("Haze colour when 'haze color from' is Color, or no atmos input is connected.")
     add(color, [0.6, 0.65, 0.75])
     add(*_double("haze_color_gain", "haze brightness", 0, 4, "Multiplies the haze colour.", 1.0))
+    tint = nuke.Color_Knob("haze_tint", "haze tint")
+    tint.setTooltip("Tints all the haze light, e.g. warm brown for smoke. White leaves it as the atmosphere made it.")
+    add(tint, [1.0, 1.0, 1.0])
     density = nuke.Color_Knob("haze_density", "haze density (1/m)")
     density.setTooltip("How much the haze dims light per metre at camera height. Ignored when inheriting.")
     add(density, [0.0001, 0.0001, 0.0001])
@@ -362,6 +377,16 @@ def build():
     for i, e in enumerate(("0", "0", "AtmosSkyPerHaze.width", "AtmosSkyPerHaze.height")):
         sky_light["box"].setExpression(e, i)
 
+    # Haze tint, applied after the horizon ratio's reference so it reaches far haze too.
+    tinted = []
+    for name, src, x in (("HazeSunTint", env_sun, 450), ("HazeSkyTint", env_sky, 500)):
+        m = nuke.nodes.Multiply(name=name, channels="rgb", xpos=x, ypos=-80)
+        for i, c in enumerate("rgb"):
+            m["value"].setExpression("parent.haze_tint.%s" % c, i)
+        m.setInput(0, src)
+        tinted.append(m)
+    sun_tinted, sky_tinted = tinted
+
     # One kernel per pass (BlinkScript writes a single image). Only the shadowed sun pass
     # tests for shadows, so the others cost a plain march.
     passes = {}
@@ -370,8 +395,8 @@ def build():
         node = nuke.nodes.BlinkScript(name="Pass_" + key, xpos=120 * i - 300, ypos=-80)
         node.setInput(0, plate)
         node.setInput(1, depth_pick)
-        node.setInput(2, env_sun)
-        node.setInput(3, env_sky)
+        node.setInput(2, sun_tinted)
+        node.setInput(3, sky_tinted)
         node.setInput(4, sky_light)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)

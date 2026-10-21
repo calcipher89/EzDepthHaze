@@ -65,6 +65,23 @@ channel of the plate and adds the layers listed under Layers below.
 | max distance (km) | 0 | Caps the hazed distance (0 = off) |
 | atmos rotation | 0 | Rotation of the atmos lat-long, when not inheriting |
 
+## Presets
+
+Pick a look in *preset* and press *apply*: it sets EzDepthHaze's knobs and leaves them all
+editable. Fog heights are set relative to the camera, so the presets work at any scene
+scale. The sun is not part of a preset (it lives on EzAtmosScatter); the *preset* tooltip
+suggests one for each look. *haze tint* colours all the haze light.
+
+| Preset | Look | Suggested sun |
+| --- | --- | --- |
+| Clear Day | Light blue aerial perspective, crisp shadows, no fog | High, 30-45 degrees, from the side |
+| Golden Hour | Warm haze, strong shafts, light valley fog | Low, 2-6 degrees, in front of the camera |
+| Valley Fog | A dense fog lake in the valleys, clear air above | Low morning sun, 8-15 degrees |
+| Smoke Haze | Thick brown-orange haze, low contrast | Dimmed and reddened |
+| Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | Any |
+
+The preset values are in `python/ezdepthhaze.py`.
+
 ## Fog and noise
 
 Set *mode* to *Volumetric* to march each ray, so the density can change along it:
