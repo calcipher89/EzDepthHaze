@@ -83,6 +83,30 @@ def _preset_script():
     ])
 
 
+def _fit_script():
+    """The fit to shot button's script: python/fit_to_shot.py with the presets and the demo's
+    measurements filled in, then run on this node."""
+    presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
+                           "suggested_sun": p["suggested_sun"]}) for name, p in ezdepthhaze.PRESETS)
+    with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
+        code = f.read()
+    code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
+    code = code.replace("REFERENCE = {}", "REFERENCE = %r" % ezdepthhaze.REFERENCE)
+    return code + "\n".join([
+        "",
+        "n = nuke.thisNode()",
+        "try:",
+        "    summary = fit(n)",
+        "except ValueError as e:",
+        "    summary = 'Fit to shot: %s' % e",
+        "n['fit_info'].setValue(summary.replace('\\n', '<br>'))",
+        "if nuke.GUI:",
+        "    nuke.message(summary)",
+        "else:",
+        "    print(summary)",
+    ])
+
+
 def _add_knobs(group, depth_pick, env_pick):
     k = []
     defaults = {}
@@ -101,6 +125,14 @@ def _add_knobs(group, depth_pick, env_pick):
     apply = nuke.PyScript_Knob("apply_preset", "apply", _preset_script())
     apply.setTooltip("Sets the knobs of the chosen preset.")
     add(apply)
+    fit = nuke.PyScript_Knob("fit_preset", "fit to shot", _fit_script())
+    fit.setTooltip("Sets the chosen preset scaled to this shot: measures the depth and camera at this frame and "
+                   "sets haze amount, fog top and softness, noise size, wind, shadow and match distances, and the "
+                   "sky depth of a far backdrop, so the look matches the demo's at any scene scale.")
+    add(fit)
+    info = nuke.Text_Knob("fit_info", "", "")
+    info.setFlag(nuke.STARTLINE)
+    add(info)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
     view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
                     "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")

@@ -72,3 +72,11 @@ def apply_preset(node, name=None):
 
 def preset_tooltip():
     return "\n".join("%s: sun %s." % (name, p["suggested_sun"]) for name, p in PRESETS)
+
+# The demo scene's terrain as fit to shot measures it (python/fit_to_shot.py reference(),
+# on the presets review's EzDepthHaze_GoldenHour): distance deciles 10/50/90 and altitude
+# deciles in metres, median haze optical depth at haze amount 1, and camera height.
+# Presets are fitted relative to these.
+REFERENCE = {"dist": [6496.5, 10173.3, 38953.5],
+             "alt": [1634.9, 1834.3, 1985.2, 2119.1, 2236.5, 2363.8, 2421.3, 2546.0, 2669.7, 2814.6, 3111.4],
+             "tau": 0.173031, "camera": 4300.0, "sky_distance": 250.0}
