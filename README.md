@@ -37,7 +37,7 @@ result = plate * T + hazeColor(view dir) * (1 - T)
 
 The haze thins with altitude over the haze height H, so looking up clears faster than
 looking sideways and looking down into a valley gets thicker. The output keeps every
-channel of the plate and adds `haze_transmittance` and `haze_inscatter` layers.
+channel of the plate and adds the layers listed under Layers below.
 
 ### Knobs
 
@@ -53,7 +53,8 @@ channel of the plate and adds `haze_transmittance` and `haze_inscatter` layers.
 | sky distance (km) | 50 | Distance used for sky pixels with Haze Sky |
 | sky depth | 1e7 | Depth at or beyond which a pixel counts as sky |
 | inherit from atmos | on | Take haze density, haze height and rotation from the EzAtmosScatter input |
-| haze color from | Atmos Input | The atmos lat-long, looked up per view direction, or a flat colour |
+| match horizon sky | on | Far haze takes the light of the atmos input's own sky, so distant terrain fades into the sky behind it |
+| match distance (km) | 20 | Distance over which the haze light changes from the camera's to the horizon sky's |
 | atmos layer | atmos_haze_color | Layer of the atmos input to use (rgba for a plain lat-long) |
 | haze color | (0.6, 0.65, 0.75) | Flat haze colour |
 | haze brightness | 1 | Multiplies the haze colour |
@@ -63,6 +64,23 @@ channel of the plate and adds `haze_transmittance` and `haze_inscatter` layers.
 | haze start (m) | 0 | Distance where the haze begins |
 | max distance (km) | 0 | Caps the hazed distance (0 = off) |
 | atmos rotation | 0 | Rotation of the atmos lat-long, when not inheriting |
+
+## Presets
+
+Pick a look in *preset* and press *apply*: it sets EzDepthHaze's knobs and leaves them all
+editable. Fog heights are set relative to the camera, so the presets work at any scene
+scale. The sun is not part of a preset (it lives on EzAtmosScatter); the *preset* tooltip
+suggests one for each look. *haze tint* colours all the haze light.
+
+| Preset | Look | Suggested sun |
+| --- | --- | --- |
+| Clear Day | Light blue aerial perspective, crisp shadows, no fog | High, 30-45 degrees, from the side |
+| Golden Hour | Warm haze, strong shafts, light valley fog | Low, 2-6 degrees, in front of the camera |
+| Valley Fog | A dense fog lake in the valleys, clear air above | Low morning sun, 8-15 degrees |
+| Smoke Haze | Thick brown-orange haze, low contrast | Dimmed and reddened |
+| Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | Any |
+
+The preset values are in `python/ezdepthhaze.py`.
 
 ## Fog and noise
 
@@ -94,31 +112,74 @@ speed.
 | wind (m/s) | (5, 0, 0) | Drifts the noise over time |
 | noise seed | 1 | Changes the pattern |
 
-## Light shafts
+## Sun, shadows and surface light
 
-With *shaft amount* above 0 and the sun in front of a camera plate, each pixel looks across
-the image towards the sun and checks how much of the way is open sky. Where mountains
-block the sun, the haze near the sun gets less light; the gaps between ridges stay bright,
-so shafts of sunlight stream through them. The sun direction comes from the atmos input
-(set its *sun from* to Manual) or from *sun direction*.
+The haze light is split in two: the part lit by the sun (`atmos_haze_sun`) and the part lit
+by the sky (`atmos_haze_sky`), both from EzAtmosScatter. Along each view ray the node checks
+whether the air can see the sun: from each point it walks towards the sun and compares
+against the depth in screen space. Shadowed air keeps its sky light and loses only the
+sunlight, so the shadows behind ridges come out in the colour of the sky, and the gaps
+between ridges read as shafts of sunlight. Shadows need the ray to be stepped (Volumetric
+mode, or Fast mode with *match horizon sky*). Only terrain in frame casts shadows.
+
+From the depth the node also rebuilds world positions (`P`) and normals (`N`) and tests
+each surface point against the sun the same way, giving the sunlight falling on the
+terrain (`surface_sunlight`). It can be added to the plate for photos and matte paintings;
+leave it off for CG already lit by the same sun.
 
 | Knob | Default | What it does |
 | --- | --- | --- |
-| shaft amount | 0 | How much the blocked haze darkens (0 = off) |
+| haze color from | Atmos Sun + Sky | EzAtmosScatter's split layers, one atmos layer split by *sun share*, or a flat colour split by *sun share* |
 | sun direction | (0, 0.1, -1) | Direction towards the sun, when not inheriting |
-| shaft length | 0.6 | How far towards the sun each pixel looks, as a fraction of the way |
-| shaft fade | 0.97 | How quickly blockers further along count less; closer to 1 gives longer shafts |
-| shaft focus | 2 | How tightly the shafts gather around the sun |
-| shaft clear distance (km) | 60 | Terrain beyond this is too hazed to cast a visible shadow |
-| shaft quality | Normal (64) | Samples along the way to the sun |
+| sun scatter | 1 | Brightness of the sunlit haze (the shafts) |
+| sky scatter | 1 | Brightness of the sky-lit haze (the haze in shadow) |
+| shadow strength | 1 | Sunlight lost where terrain blocks the sun; 1 is physical, 0 is off |
+| shadow fill | 0 | Puts back a tinted share of the lost sunlight (artistic) |
+| shadow distance (km) | 20 | How far towards the sun each point looks for blockers |
+| penumbra (deg) | 0.5 | Shadow softness; the sun is about 0.5 across |
+| occluder thickness (m) | 1e9 | How deep each surface is taken to be; lower it for thin objects |
+| shadow quality | Normal | Samples towards the sun, and how often along the view ray |
+| add surface light | off | Adds `surface_sunlight` to the plate before hazing |
+| surface light strength | 1 | Multiplies the surface light |
+| sun light color | (1, 0.8, 0.6) | Colour and brightness of the sunlight on the terrain |
+| albedo from | Plate | The plate's colour, or a constant *albedo* |
 
-This is a screen-space effect: it only knows what is in frame, and lat-long plates get no
-shafts.
+## Layers
+
+Every pass is written to its own layer, so the look can be rebuilt and graded:
+
+```
+result = (plate + surface_sunlight, if added) * haze_transmittance + haze_sun + haze_sky
+```
+
+| Layer | Contents |
+| --- | --- |
+| `haze_transmittance` | How much of the plate survives the haze |
+| `haze_inscatter` | All the haze light (`haze_sun + haze_sky`) |
+| `haze_sun` | Sunlit haze, with shadows |
+| `haze_sky` | Sky-lit haze |
+| `haze_shadow` | Sunlight the haze lost to shadows |
+| `haze_fog` | The fog layer's share of the in-scatter |
+| `haze_wisps` | How much the noise changed the density, signed, weighted like the in-scatter |
+| `surface_sunlight` | Sunlight falling on the terrain |
+| `surface_sun_visibility` | 1 where a surface sees the sun, 0 in shadow |
+| `P`, `N` | World position (metres) and normal, rebuilt from depth |
 
 ## Demo
 
 `examples/DemoTerrain.blink` renders a procedural mountain range through a Nuke camera,
 with distance in alpha, so the node can be tried without a CG render.
+`examples/build_demo.py` builds a full sunset scene with it (needs EzAtmosScatter too):
+
+```
+Nuke15.1.exe --nukex -i --gpu -t examples/build_demo.py <output folder>
+```
+
+It renders the terrain once to `demo_terrain.exr` and saves `ezdepthhaze_demo.nk`.
+
+`examples/build_layer_breakdown.py <demo folder>` then adds a labelled rebuild of the result
+from its layers next to the node (plate + surface light, times transmittance, plus sun and
+sky haze, with a difference check) and saves `ezdepthhaze_layer_breakdown.nk`.
 
 ## Rebuilding the gizmo
 

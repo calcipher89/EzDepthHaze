@@ -10,15 +10,24 @@ atmos_haze_color layer lights the haze and whose haze settings can be inherited.
 """
 
 import os
+import sys
 
 import nuke
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "python"))
+import ezdepthhaze  # noqa: E402  (preset names)
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
-LAYERS = ["haze_transmittance", "haze_inscatter"]
-VIEW_OUTPUTS = ["Hazed Plate", "Haze Transmittance", "Haze In-scatter"]
+LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_shadow", "haze_fog",
+          "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N"]
+# (menu label, key of the node that feeds the main rgb)
+VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"),
+                ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
+                ("Haze Shadow", "shadow"), ("Haze Fog", "fog"), ("Haze Wisps", "wisps"),
+                ("Surface Sunlight", "surface"), ("Surface Sun Visibility", "visibility"),
+                ("World Position (P)", "P"), ("Normals (N)", "N")]
 
 # Expressions that read the camera input, or fall back to an identity camera.
 CAM = "[exists parent.input1] ? parent.input1.%s : %s"
@@ -60,9 +69,18 @@ def _add_knobs(group, depth_pick, env_pick):
             defaults[knob.name()] = value
 
     add(nuke.Tab_Knob("ezdepthhaze", "EzDepthHaze"))
-    view = nuke.Enumeration_Knob("view_output", "view output", VIEW_OUTPUTS)
-    view.setTooltip("What the main rgb shows. The transmittance and in-scatter are also written to the "
-                    "haze_transmittance and haze_inscatter layers.")
+    preset = nuke.Enumeration_Knob("preset", "preset", ezdepthhaze.PRESET_NAMES)
+    preset.setTooltip("A starting look. Pick one and press apply; every knob stays editable afterwards. "
+                      "Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\n"
+                      + ezdepthhaze.preset_tooltip())
+    add(preset, 1)
+    apply = nuke.PyScript_Knob("apply_preset", "apply",
+                               "import ezdepthhaze; ezdepthhaze.apply_preset(nuke.thisNode())")
+    apply.setTooltip("Sets the knobs of the chosen preset.")
+    add(apply)
+    view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
+    view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
+                    "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")
     add(view)
 
     add(nuke.Text_Knob("plate_divider", "Plate"))
@@ -96,10 +114,23 @@ def _add_knobs(group, depth_pick, env_pick):
                        "and hdri rotation, so the haze matches its sky.")
     inherit.setFlag(nuke.STARTLINE)
     add(inherit, True)
-    color_from = nuke.Enumeration_Knob("haze_color_from", "haze color from", ["Atmos Input", "Color"])
-    color_from.setTooltip("Atmos Input: the colour comes from the lat-long in the 'atmos' input, looked up in "
-                          "each pixel's view direction, so the sun side glows. Color: one flat colour.")
+    color_from = nuke.Enumeration_Knob("haze_color_from", "haze color from", ["Atmos Sun + Sky", "Atmos Layer", "Color"])
+    color_from.setTooltip("Atmos Sun + Sky: EzAtmosScatter's atmos_haze_sun and atmos_haze_sky layers, looked up "
+                          "in each pixel's view direction; shadows remove only the sun part. Atmos Layer: one "
+                          "layer of the atmos input ('atmos layer'), split by 'sun share'. Color: one flat "
+                          "colour, split by 'sun share'.")
     add(color_from)
+    add(*_double("sun_share", "sun share", 0, 1, "With Atmos Layer or Color: how much of the haze light comes "
+                 "from the sun (and so can be shadowed) rather than the sky.", 0.6))
+    match = nuke.Boolean_Knob("match_horizon", "match horizon sky")
+    match.setTooltip("With an EzAtmosScatter atmos input, haze far away takes the light of that atmosphere's "
+                     "own sky (its atmos_inscatter over 1 - atmos_transmittance) instead of the light at "
+                     "camera height. At sunset the air far away gets dimmer, redder sunlight, so without "
+                     "this distant terrain fades to a haze brighter than the sky behind it.")
+    match.setFlag(nuke.STARTLINE)
+    add(match, True)
+    add(*_double("match_distance", "match distance (km)", 1, 200, "Distance over which the haze light "
+                 "changes from the camera's to the horizon sky's.", 20.0))
     env_layer = nuke.Link_Knob("atmos_layer", "atmos layer")
     env_layer.makeLink(env_pick.name(), "in1")
     env_layer.setTooltip("Layer of the atmos input to use: atmos_haze_color for EzAtmosScatter, rgba for a "
@@ -109,6 +140,9 @@ def _add_knobs(group, depth_pick, env_pick):
     color.setTooltip("Haze colour when 'haze color from' is Color, or no atmos input is connected.")
     add(color, [0.6, 0.65, 0.75])
     add(*_double("haze_color_gain", "haze brightness", 0, 4, "Multiplies the haze colour.", 1.0))
+    tint = nuke.Color_Knob("haze_tint", "haze tint")
+    tint.setTooltip("Tints all the haze light, e.g. warm brown for smoke. White leaves it as the atmosphere made it.")
+    add(tint, [1.0, 1.0, 1.0])
     density = nuke.Color_Knob("haze_density", "haze density (1/m)")
     density.setTooltip("How much the haze dims light per metre at camera height. Ignored when inheriting.")
     add(density, [0.0001, 0.0001, 0.0001])
@@ -147,22 +181,46 @@ def _add_knobs(group, depth_pick, env_pick):
     add(wind, [5.0, 0.0, 0.0])
     add(*_double("noise_seed", "noise seed", 0, 100, "Changes the noise pattern.", 1.0))
 
-    add(nuke.Text_Knob("shaft_divider", "Light Shafts"))
-    add(*_double("shaft_amount", "shaft amount", 0, 1, "How much the haze darkens where mountains block "
-                 "the sun, leaving shafts of light through the gaps. Camera plates with the sun in front.", 0.0))
+    add(nuke.Text_Knob("shadow_divider", "Sun and Shadows"))
     sun = nuke.XYZ_Knob("sun_direction", "sun direction")
     sun.setTooltip("Direction towards the sun, +Y up. Taken from the atmos input's sun direction when "
                    "inheriting (set its 'sun from' to Manual so the two agree).")
     add(sun, [0.0, 0.1, -1.0])
-    add(*_double("shaft_length", "shaft length", 0, 1, "How far towards the sun each pixel looks, as a "
-                 "fraction of the way there.", 0.6))
-    add(*_double("shaft_decay", "shaft fade", 0.8, 1, "How quickly blockers further along count less. "
-                 "Closer to 1 gives longer shafts.", 0.97))
-    add(*_double("shaft_falloff", "shaft focus", 0.5, 16, "How tightly the shafts gather around the sun.", 2.0))
-    add(*_double("clear_distance", "shaft clear distance (km)", 1, 300, "Terrain beyond this is so hazed it "
-                 "casts no visible shadow.", 60.0))
-    shaft_quality = nuke.Enumeration_Knob("shaft_quality", "shaft quality", ["Draft (32)", "Normal (64)", "High (128)"])
-    add(shaft_quality, 1)
+    add(*_double("sun_scatter", "sun scatter", 0, 4, "Multiplies the sunlit haze: how bright the light shafts are.", 1.0))
+    add(*_double("sky_scatter", "sky scatter", 0, 4, "Multiplies the sky-lit haze: how bright the haze in shadow is.", 1.0))
+    add(*_double("shadow_strength", "shadow strength", 0, 1, "How much sunlight the haze loses where the terrain "
+                 "blocks the sun. 1 is physical; 0 turns volumetric shadows off.", 1.0))
+    fill = nuke.Color_Knob("shadow_fill", "shadow fill")
+    fill.setTooltip("Puts back a tinted share of the sunlight the shadowed haze lost. 0 is physical.")
+    add(fill, [0.0, 0.0, 0.0])
+    add(*_double("shadow_distance", "shadow distance (km)", 0.1, 100, "How far towards the sun each point looks "
+                 "for terrain that blocks it.", 20.0))
+    add(*_double("penumbra", "penumbra (deg)", 0, 5, "Softness of the shadow edges: the sun's apparent size is "
+                 "about 0.5. Larger is softer but grainier.", 0.5))
+    add(*_double("occluder_thickness", "occluder thickness (m)", 1, 1e9, "How deep each surface in the depth is "
+                 "taken to be. Mountains are solid (the default); lower it for thin objects like trees.", 1e9))
+    shadow_quality = nuke.Enumeration_Knob("shadow_quality", "shadow quality", ["Draft", "Normal", "High"])
+    shadow_quality.setTooltip("Samples towards the sun (8, 16, 32) and how often along the view ray they are taken.")
+    add(shadow_quality, 1)
+    note = nuke.Text_Knob("shadow_note", "", "Screen space: only terrain in frame casts shadows. Shadows need "
+                          "Volumetric mode or match horizon sky to step the ray; Fast mode steps 16 slabs.")
+    add(note)
+
+    add(nuke.Text_Knob("surface_divider", "Surface Light"))
+    surface_add = nuke.Boolean_Knob("surface_add", "add surface light")
+    surface_add.setTooltip("Adds the sunlight falling on the terrain to the plate. Off: it is only written to the "
+                           "surface_sunlight layer. Leave off for CG already lit by the same sun.")
+    surface_add.setFlag(nuke.STARTLINE)
+    add(surface_add, False)
+    add(*_double("surface_strength", "surface light strength", 0, 10, "Multiplies the surface light.", 1.0))
+    surface_color = nuke.Color_Knob("surface_color", "sun light color")
+    surface_color.setTooltip("Colour and brightness of the sunlight on the terrain.")
+    add(surface_color, [1.0, 0.8, 0.6])
+    albedo_from = nuke.Enumeration_Knob("albedo_from", "albedo from", ["Plate", "Constant"])
+    albedo_from.setTooltip("Plate: use the plate's own colour as the surface colour. Constant: use 'albedo'.")
+    add(albedo_from)
+    albedo = nuke.Color_Knob("albedo", "albedo")
+    add(albedo, [0.15, 0.15, 0.15])
 
     for knob in k:
         group.addKnob(knob)
@@ -188,7 +246,9 @@ def _link_haze(node, output):
     _link(node, "sky_threshold", "parent.sky_threshold")
     _link(node, "haze_sky", "parent.sky_handling")
     _link(node, "sky_distance", "parent.sky_distance * 1000")
-    _link(node, "use_env", "[exists parent.input2] && parent.haze_color_from==0")
+    _link(node, "use_env", "[exists parent.input2] && parent.haze_color_from!=2")
+    _link(node, "use_far", "[exists parent.input2] && parent.match_horizon")
+    _link(node, "match_distance", "parent.match_distance * 1000")
     _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
     for i, c in enumerate("rgb"):
         _link(node, "haze_color", "parent.haze_color.%s" % c, i)
@@ -212,30 +272,23 @@ def _link_haze(node, output):
         _link(node, "noise_wind", "parent.noise_wind.%s" % c, i)
     _link(node, "noise_time", "frame / root.fps")
     _link(node, "noise_seed", "parent.noise_seed")
-    _link(node, "shaft_amount", "parent.shaft_amount")
-    _link(node, "shaft_falloff", "parent.shaft_falloff")
+    _link(node, "sun_share", "parent.sun_share")
+    _link(node, "sun_scatter", "parent.sun_scatter")
+    _link(node, "sky_scatter", "parent.sky_scatter")
+    _link(node, "shadow_strength", "parent.shadow_strength")
+    for i, c in enumerate("rgb"):
+        _link(node, "shadow_fill", "parent.shadow_fill.%s" % c, i)
+        _link(node, "surface_color", "parent.surface_color.%s" % c, i)
+        _link(node, "albedo", "parent.albedo.%s" % c, i)
+    _link(node, "shadow_distance", "parent.shadow_distance * 1000")
+    _link(node, "penumbra", "parent.penumbra")
+    _link(node, "occluder_thickness", "parent.occluder_thickness")
+    _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
+    _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
+    _link(node, "surface_strength", "parent.surface_strength")
+    _link(node, "albedo_from_plate", "parent.albedo_from==0")
     for i, c in enumerate("xyz"):
         _link(node, "sun_direction", ATMOS % ("sun_direction", "sun_direction.%s" % c, "parent.sun_direction.%s" % c), i)
-
-
-def _link_shafts(node):
-    _link(node, "latlong_plate", "parent.plate_type")
-    identity = ["1", "0", "0", "0", "1", "0", "0", "0", "1"]
-    for row in range(3):
-        for col in range(3):
-            _link(node, "cam_row%d" % row, CAM % ("world_matrix.%d" % (row * 4 + col), identity[row * 3 + col]), col)
-    _link(node, "focal", CAM % ("focal", "35"))
-    _link(node, "haperture", CAM % ("haperture", "36"))
-    _link(node, "vaperture", CAM % ("vaperture", "20.25"))
-    for i, c in enumerate("xyz"):
-        _link(node, "sun_direction", ATMOS % ("sun_direction", "sun_direction.%s" % c, "parent.sun_direction.%s" % c), i)
-    _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
-    _link(node, "sky_threshold", "parent.sky_threshold")
-    _link(node, "shaft_length", "parent.shaft_length")
-    _link(node, "shaft_samples", "parent.shaft_amount > 0 ? (parent.shaft_quality==0 ? 32 : parent.shaft_quality==1 ? 64 : 128) : 0")
-    _link(node, "shaft_decay", "parent.shaft_decay")
-    _link(node, "depth_scale", "parent.depth_scale")
-    _link(node, "clear_distance", "parent.clear_distance * 1000")
 
 
 def build():
@@ -258,50 +311,152 @@ def build():
     env_pick.setInput(0, atmos)
     env_pick["in1"].setValue("atmos_haze_color")
 
-    # Screen-space shafts: how much of each pixel's line towards the sun is open sky.
-    shafts = nuke.nodes.BlinkScript(name="Shafts", xpos=300, ypos=-140)
-    shafts.setInput(0, depth_pick)
-    _load_kernel(shafts, "EzShafts.blink")
-    _link_shafts(shafts)
+    # Sun and sky haze light. Atmos Sun + Sky uses EzAtmosScatter's split layers; Atmos Layer
+    # splits one layer of the atmos input by 'sun share'.
+    sun_layer = nuke.nodes.Shuffle2(name="AtmosSunPick", xpos=450, ypos=-200)
+    sun_layer.setInput(0, atmos)
+    sun_layer["in1"].setValue("atmos_haze_sun")
+    sky_layer = nuke.nodes.Shuffle2(name="AtmosSkyPick", xpos=500, ypos=-200)
+    sky_layer.setInput(0, atmos)
+    sky_layer["in1"].setValue("atmos_haze_sky")
+    share_sun = nuke.nodes.Multiply(name="LayerSunShare", channels="rgb", xpos=600, ypos=-170)
+    share_sun["value"].setExpression("parent.sun_share")
+    share_sun.setInput(0, env_pick)
+    share_sky = nuke.nodes.Multiply(name="LayerSkyShare", channels="rgb", xpos=650, ypos=-170)
+    share_sky["value"].setExpression("1 - parent.sun_share")
+    share_sky.setInput(0, env_pick)
+    env_sun = nuke.nodes.Switch(name="HazeSunLight", xpos=450, ypos=-140)
+    env_sun.setInput(0, sun_layer)
+    env_sun.setInput(1, share_sun)
+    env_sun["which"].setExpression("parent.haze_color_from==1")
+    env_sky = nuke.nodes.Switch(name="HazeSkyLight", xpos=500, ypos=-140)
+    env_sky.setInput(0, sky_layer)
+    env_sky.setInput(1, share_sky)
+    env_sky["which"].setExpression("parent.haze_color_from==1")
+    env_total = nuke.nodes.Merge2(name="HazeTotalLight", operation="plus", output="rgb", xpos=550, ypos=-110)
+    env_total.setInput(0, env_sun)
+    env_total.setInput(1, env_sky)
 
-    kernels = []
-    for i, (name, output) in enumerate((("Haze", 0), ("Transmittance", 1))):
-        node = nuke.nodes.BlinkScript(name=name, xpos=150 * i, ypos=-80)
+    # Horizon light: inscatter / (1 - transmittance) of the atmos sky, the average light along
+    # each sky ray per unit of haze. Haze far away takes this light, so distant terrain fades
+    # into the sky behind it instead of glowing brighter than it. Below the horizon the atmos
+    # rays hit the ground, so the row just above it is held downwards; a blur keeps the
+    # azimuth profile smooth.
+    sky_in = nuke.nodes.Shuffle2(name="AtmosSkyScatter", xpos=750, ypos=-200)
+    sky_in.setInput(0, atmos)
+    sky_in["in1"].setValue("atmos_inscatter")
+    sky_t = nuke.nodes.Shuffle2(name="AtmosSkyTransmittance", xpos=900, ypos=-200)
+    sky_t.setInput(0, atmos)
+    sky_t["in1"].setValue("atmos_transmittance")
+    veil = nuke.nodes.Expression(name="AtmosSkyVeil", expr0="max(1 - r, 0.02)", expr1="max(1 - g, 0.02)",
+                                 expr2="max(1 - b, 0.02)", xpos=900, ypos=-160)
+    veil.setInput(0, sky_t)
+    per_haze = nuke.nodes.Merge2(name="AtmosSkyPerHaze", operation="divide", output="rgb", xpos=750, ypos=-120)
+    per_haze.setInput(0, veil)
+    per_haze.setInput(1, sky_in)
+    # Stored as a ratio to the haze colour, so below the horizon the haze keeps following the
+    # sun's phase function and only takes on the horizon sky's dimming and reddening.
+    safe_color = nuke.nodes.Expression(name="AtmosHazeColorSafe", expr0="max(r, 1e-5)", expr1="max(g, 1e-5)",
+                                       expr2="max(b, 1e-5)", xpos=600, ypos=-160)
+    safe_color.setInput(0, env_total)
+    ratio = nuke.nodes.Merge2(name="AtmosSkyRatio", operation="divide", output="rgb", xpos=750, ypos=-110)
+    ratio.setInput(0, safe_color)
+    ratio.setInput(1, per_haze)
+    soften = nuke.nodes.Blur(name="AtmosSkySoften", xpos=750, ypos=-100)
+    soften["size"].setValue([96, 24])
+    soften.setInput(0, ratio)
+    upper = nuke.nodes.Crop(name="AtmosSkyUpper", crop=False, xpos=750, ypos=-90)
+    upper.setInput(0, soften)
+    for i, e in enumerate(("0", "input.height / 2 + 2", "input.width", "input.height")):
+        upper["box"].setExpression(e, i)
+    grow = nuke.nodes.AdjBBox(name="AtmosSkyExtend", xpos=750, ypos=-60)
+    grow["numpixels"].setExpression("input.height")
+    grow.setInput(0, upper)
+    sky_light = nuke.nodes.Crop(name="AtmosSkyFull", crop=False, xpos=750, ypos=-30)
+    sky_light.setInput(0, grow)
+    for i, e in enumerate(("0", "0", "AtmosSkyPerHaze.width", "AtmosSkyPerHaze.height")):
+        sky_light["box"].setExpression(e, i)
+
+    # Haze tint, applied after the horizon ratio's reference so it reaches far haze too.
+    tinted = []
+    for name, src, x in (("HazeSunTint", env_sun, 450), ("HazeSkyTint", env_sky, 500)):
+        m = nuke.nodes.Multiply(name=name, channels="rgb", xpos=x, ypos=-80)
+        for i, c in enumerate("rgb"):
+            m["value"].setExpression("parent.haze_tint.%s" % c, i)
+        m.setInput(0, src)
+        tinted.append(m)
+    sun_tinted, sky_tinted = tinted
+
+    # One kernel per pass (BlinkScript writes a single image). Only the shadowed sun pass
+    # tests for shadows, so the others cost a plain march.
+    passes = {}
+    for i, (key, output) in enumerate((("transmittance", 1), ("sun", 3), ("sky", 4), ("sun_free", 5),
+                                       ("masks", 6), ("surface_raw", 7), ("P", 8), ("N", 9))):
+        node = nuke.nodes.BlinkScript(name="Pass_" + key, xpos=120 * i - 300, ypos=-80)
         node.setInput(0, plate)
         node.setInput(1, depth_pick)
-        node.setInput(2, env_pick)
-        node.setInput(3, shafts)
+        node.setInput(2, sun_tinted)
+        node.setInput(3, sky_tinted)
+        node.setInput(4, sky_light)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)
-        kernels.append(node)
-    hazed, trans = kernels
+        passes[key] = node
 
-    # In-scatter = hazed - plate * T, so only two kernels are needed.
-    dimmed = nuke.nodes.Merge2(name="PlateTimesT", operation="multiply", output="rgb", xpos=300, ypos=0)
-    dimmed.setInput(0, plate)
-    dimmed.setInput(1, trans)
-    inscatter = nuke.nodes.Merge2(name="InScatter", operation="from", output="rgb", xpos=300, ypos=60)
-    inscatter.setInput(0, hazed)
-    inscatter.setInput(1, dimmed)
+    def merge(name, op, a, b, x, y):
+        m = nuke.nodes.Merge2(name=name, operation=op, output="rgb", xpos=x, ypos=y)
+        m.setInput(0, b)
+        m.setInput(1, a)
+        return m
 
-    view = nuke.nodes.Switch(name="ViewOutput", xpos=0, ypos=120)
-    for i, node in enumerate((hazed, trans, inscatter)):
-        view.setInput(i, node)
+    def mono(name, source, channel, x, y):
+        s = nuke.nodes.Shuffle2(name=name, xpos=x, ypos=y)
+        s.setInput(0, source)
+        s["mappings"].setValue([("rgba.%s" % channel, "rgba.red"), ("rgba.%s" % channel, "rgba.green"),
+                                ("rgba.%s" % channel, "rgba.blue")])
+        return s
+
+    inscatter = merge("InScatter", "plus", passes["sky"], passes["sun"], 0, 0)
+    shadow = merge("ShadowLoss", "from", passes["sun"], passes["sun_free"], 120, 0)
+    fog_share = mono("FogShare", passes["masks"], "red", 240, 0)
+    fog = merge("FogInScatter", "multiply", fog_share, inscatter, 240, 40)
+    wisps = mono("Wisps", passes["masks"], "green", 360, 0)
+    visibility = mono("SurfaceVisibility", passes["surface_raw"], "alpha", 480, 0)
+    surface = nuke.nodes.Remove(name="SurfaceSunlight", operation="keep", channels="rgb", xpos=600, ypos=0)
+    surface.setInput(0, passes["surface_raw"])
+
+    # result = (plate + surface light, if added) * T + sun + sky
+    surface_add = nuke.nodes.Multiply(name="SurfaceAdd", channels="rgb", xpos=600, ypos=40)
+    surface_add["value"].setExpression("parent.surface_add")
+    surface_add.setInput(0, surface)
+    lit_plate = merge("PlatePlusSurface", "plus", surface_add, plate, 0, 60)
+    dimmed = merge("PlateTimesT", "multiply", passes["transmittance"], lit_plate, 0, 100)
+    hazed = merge("Hazed", "plus", inscatter, dimmed, 0, 140)
+
+    sources = {"hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
+               "sun": passes["sun"], "sky": passes["sky"], "shadow": shadow, "fog": fog, "wisps": wisps,
+               "surface": surface, "visibility": visibility, "P": passes["P"], "N": passes["N"]}
+    view = nuke.nodes.Switch(name="ViewOutput", xpos=0, ypos=200)
+    for i, (_, key) in enumerate(VIEW_OUTPUTS):
+        view.setInput(i, sources[key])
     view["which"].setExpression("parent.view_output")
 
     # Main rgb from the view switch; every other channel of the plate passes through.
-    stream = nuke.nodes.Copy(name="MainRGB", channels="rgb", xpos=0, ypos=200)
+    stream = nuke.nodes.Copy(name="MainRGB", channels="rgb", xpos=0, ypos=260)
     stream.setInput(0, plate)
     stream.setInput(1, view)
-    for i, (layer, source) in enumerate((("haze_transmittance", trans), ("haze_inscatter", inscatter))):
-        copy = nuke.nodes.Copy(name="Layer_" + layer, xpos=0, ypos=260 + 60 * i)
+    layer_sources = [("haze_transmittance", passes["transmittance"]), ("haze_inscatter", inscatter),
+                     ("haze_sun", passes["sun"]), ("haze_sky", passes["sky"]), ("haze_shadow", shadow),
+                     ("haze_fog", fog), ("haze_wisps", wisps), ("surface_sunlight", surface),
+                     ("surface_sun_visibility", visibility), ("P", passes["P"]), ("N", passes["N"])]
+    for i, (layer, source) in enumerate(layer_sources):
+        copy = nuke.nodes.Copy(name="Layer_" + layer, xpos=0, ypos=320 + 40 * i)
         copy.setInput(0, stream)
         copy.setInput(1, source)
         for c, channel in enumerate(("red", "green", "blue")):
             copy["from%d" % c].setValue("rgba." + channel)
             copy["to%d" % c].setValue("%s.%s" % (layer, channel))
         stream = copy
-    out = nuke.nodes.Output(xpos=0, ypos=420)
+    out = nuke.nodes.Output(xpos=0, ypos=320 + 40 * len(layer_sources) + 40)
     out.setInput(0, stream)
     group.end()
 
