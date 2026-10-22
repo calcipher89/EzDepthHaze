@@ -188,6 +188,17 @@ def _add_easy_knobs(add):
                    "quarter of the GPU memory and time. Renders from a terminal (the farm) are always Full.")
     res.clearFlag(nuke.STARTLINE)
     add(res, 1)
+    smooth = nuke.Double_Knob("smooth", "smooth grain (px)")
+    smooth.setRange(0, 6)
+    smooth.setTooltip("Averages away the sampling grain in the haze layers, but only between pixels at about "
+                      "the same depth, so ridge lines stay sharp. 0 is off; 2 cleans most grain; raise steps "
+                      "and shadow quality as well for finals.")
+    add(smooth, 2.0)
+    blue = nuke.Boolean_Knob("blue_noise", "blue noise")
+    blue.setTooltip("Spreads the sampling evenly from pixel to pixel, so the leftover grain is finer and less "
+                    "visible. Off: plain random sampling, as in earlier versions.")
+    blue.clearFlag(nuke.STARTLINE)
+    add(blue, True)
     strength = nuke.Double_Knob("look_strength", "look strength")
     strength.setRange(0, 1)
     strength.setTooltip("From clear air (0) to the full look (1).")
@@ -486,6 +497,7 @@ def _link_haze(node, output):
     _link(node, "noise_size", "parent.noise_size")
     _link(node, "noise_stretch", "parent.noise_stretch")
     _link(node, "noise_detail", "parent.noise_detail")
+    _link(node, "blue_noise", "parent.blue_noise")
     _link(node, "noise_roughness", "parent.noise_roughness")
     _link(node, "noise_sharpness", "parent.noise_sharpness")
     for i, c in enumerate("xyz"):
@@ -632,6 +644,14 @@ def build():
         node.setInput(4, sky_light)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)
+        if key in ("transmittance", "sun", "sky", "sun_free", "masks"):
+            # Depth-aware smoothing of the sampling grain; the radius is in full-size pixels.
+            smooth = nuke.nodes.BlinkScript(name="Smooth_" + key, xpos=120 * i - 300, ypos=-65)
+            smooth.setInput(0, node)
+            smooth.setInput(1, work_depth)
+            _load_kernel(smooth, "EzDepthHazeSmooth.blink")
+            _link(smooth, "radius", "parent.smooth * (%s)" % work)
+            node = smooth
         full = nuke.nodes.Reformat(name="Full_" + key, type="to box", box_fixed=True, resize="distort",
                                    filter="Cubic", xpos=120 * i - 300, ypos=-50)
         full["box_width"].setExpression("plate.width")
