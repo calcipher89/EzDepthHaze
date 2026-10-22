@@ -35,6 +35,14 @@ def _pct(values, p):
     return v[i] + (v[j] - v[i]) * (x - i)
 
 
+def _camera(n):
+    """The camera in the camera input, through any Dots or NoOps."""
+    c = n.input(1)
+    while c is not None and not c.knob("world_matrix"):
+        c = c.input(0) if c.inputs() else None
+    return c
+
+
 def _effective(n, name, fallback):
     """A haze setting as the kernel sees it: from the atmos input when inheriting."""
     atmos = n.input(2)
@@ -53,7 +61,7 @@ def _height_path(c, d, h):
 def measure(n, grid=(48, 27)):
     """Distances, altitudes and haze of the shot's terrain, sampled on a grid."""
     plate = n.input(0)
-    cam = n.input(1)
+    cam = _camera(n)
     if plate is None:
         raise ValueError("connect a plate with depth first")
     latlong = n["plate_type"].getValue() == 1
@@ -157,7 +165,7 @@ def sun_suggestion(n, preset):
     Returns (question, direction, colour) or None."""
     want = preset.get("sun")
     atmos = _atmos(n)
-    cam = n.input(1)
+    cam = _camera(n)
     if not want or atmos is None or cam is None or not cam.knob("world_matrix") or n["plate_type"].getValue() == 1:
         return None
     wm = cam["world_matrix"]
@@ -191,7 +199,7 @@ def _plain(n, preset):
     for k, v in preset["knobs"].items():
         n[k].setValue(v)
     if preset["fog_below_camera"] is not None:
-        cam = n.input(1)
+        cam = _camera(n)
         if n["plate_type"].getValue() == 0 and cam is not None and cam.knob("world_matrix"):
             height = cam["world_matrix"].getValue(7) * n["depth_scale"].getValue()
         else:
@@ -218,6 +226,9 @@ def fit(n, name=None):
     scale = st["dist"][1] / ref["dist"][1]
     # Easy mode moves the fog height in steps of the terrain's altitude range.
     LAST_FIT["relief"] = max(st["alt"][9] - st["alt"][1], 1.0)
+    LAST_FIT["low"] = st["alt"][0]
+    LAST_FIT["valley"] = st["alt"][2]
+    LAST_FIT["scale"] = st["dist"][1] / ref["dist"][1]
     relief = max(st["alt"][9] - st["alt"][1], 1.0) / max(ref["alt"][9] - ref["alt"][1], 1.0)
     knobs = dict(preset["knobs"])
     knobs["haze_amount"] = preset["knobs"]["haze_amount"] * ref["tau"] / max(st["tau"], 1e-12)

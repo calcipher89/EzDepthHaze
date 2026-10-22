@@ -1,4 +1,4 @@
-"""Easy mode: a few big sliders over the advanced knobs, look thumbnails, and saved looks.
+"""Easy mode: a few big sliders over the advanced knobs, and saved looks.
 
 build_gizmo.py embeds this file after fit_to_shot.py in the gizmo's knobChanged and buttons
 (one shared namespace), with LOOK_DIRS and LOOK_KNOBS filled in, so Nuke needs no Python
@@ -12,7 +12,6 @@ turned off. Every slider change rewrites the advanced knobs from the base, so tu
 import json
 import os
 import random
-import tempfile
 
 import nuke
 
@@ -40,7 +39,13 @@ def rebase(n, relief=None):
         old = json.loads(n["easy_base"].value() or "{}")
     except ValueError:
         pass
-    base["relief"] = relief or LAST_FIT.get("relief") or old.get("relief") or max(n["fog_softness"].value() * 3.0, 50.0)
+    # What the last fit measured about the terrain, so sliders work in the shot's own units.
+    for key, fallback in (("relief", max(n["fog_softness"].value() * 3.0, 50.0)),
+                          ("low", n["fog_top"].value() - 300.0), ("valley", n["fog_top"].value()),
+                          ("scale", 1.0)):
+        base[key] = LAST_FIT.get(key, old.get(key, fallback))
+    if relief:
+        base["relief"] = relief
     n["easy_base"].setValue(json.dumps(base))
     for name, neutral, _ in SLIDERS:
         n[name].setValue(neutral)
@@ -48,25 +53,65 @@ def rebase(n, relief=None):
 
 
 def apply_easy(n):
-    """Rewrite the advanced knobs from the base and the sliders."""
+    """Rewrite the advanced knobs from the base and the sliders.
+
+    Each slider moves several knobs, so it changes the look on any shot: where the look
+    has none of something (no fog, no shadows), pushing the slider past the middle adds it.
+    """
     try:
         b = json.loads(n["easy_base"].value() or "{}")
     except ValueError:
         b = {}
-    if not b:
+    if not b or "scale" not in b:
         rebase(n)
         b = json.loads(n["easy_base"].value())
     s = n["look_strength"].value()
     e = dict((name, n[name].value()) for name, _, _ in SLIDERS)
+
+    # Haze: thickness.
     n["haze_amount"].setValue(b["haze_amount"] * e["easy_haze"] * s)
-    n["fog_density"].setValue(b["fog_density"] * e["easy_fog"] * s)
-    n["fog_top"].setValue(b["fog_top"] + e["easy_fog_height"] * b["relief"])
-    n["noise_amount"].setValue(min(b["noise_amount"] * e["easy_texture"], 1.5) * s)
-    n["sun_scatter"].setValue(b["sun_scatter"] * e["easy_glow"])
-    n["shadow_strength"].setValue(min(max(b["shadow_strength"] * e["easy_shafts"], 0.0), 1.0))
+
+    # Warmth: orange or blue haze light, and less or more blue sky light in it.
     w = e["easy_warmth"]
     tint = b["haze_tint"] if isinstance(b["haze_tint"], list) else [b["haze_tint"]] * 3
-    n["haze_tint"].setValue([tint[0] * (1.0 + 0.3 * w), tint[1] * (1.0 + 0.05 * w), tint[2] * (1.0 - 0.3 * w)])
+    n["haze_tint"].setValue([tint[0] * (1.0 + 0.6 * w), tint[1] * (1.0 + 0.1 * w), tint[2] * (1.0 - 0.6 * w)])
+    n["sky_scatter"].setValue(b["sky_scatter"] * (1.0 - 0.4 * w))
+
+    # Glow and shafts: the sunlit haze, and how hard the terrain cuts it.
+    g = e["easy_glow"]
+    sh = e["easy_shafts"]
+    sun = b["sun_scatter"] * g ** 1.5
+    if sh <= 1.0:
+        n["shadow_strength"].setValue(b["shadow_strength"] * sh)
+        n["penumbra"].setValue(b["penumbra"])
+    else:
+        # Past the middle: full shadows, crisper edges, brighter sunlit air between them.
+        n["shadow_strength"].setValue(1.0)
+        n["penumbra"].setValue(b["penumbra"] / (1.0 + 2.0 * (sh - 1.0)))
+        sun *= 1.0 + (sh - 1.0)
+    n["sun_scatter"].setValue(sun)
+
+    # Fog: denser and deeper (it rises up the valleys), or some where the look has none.
+    f = e["easy_fog"]
+    if b["fog_density"] > 0:
+        n["fog_density"].setValue(b["fog_density"] * f * f * s)
+    else:
+        n["fog_density"].setValue(2.0 / max(b["scale"], 1e-3) * max(f - 1.0, 0.0) * s)
+    top = b["fog_top"] if b["fog_top"] > b["low"] else b["valley"]
+    rise = 0.35 * (f - 1.0) * b["relief"]
+    n["fog_top"].setValue(top + rise + e["easy_fog_height"] * b["relief"])
+    if b["fog_density"] <= 0 and f > 1.0:
+        n["fog_softness"].setValue(max(b["fog_softness"], 0.25 * b["relief"]))
+
+    # Texture: how much the noise breaks up the fog and the haze. Past the middle the
+    # patches also grow, so they don't average out along long rays.
+    t = e["easy_texture"]
+    amount = b["noise_amount"] if b["noise_amount"] > 0 else 0.5
+    n["noise_amount"].setValue(min(amount * t, 3.0) * s)
+    n["noise_on_haze"].setValue(min(max(b["noise_on_haze"], 0.1) * t ** 1.5, 1.0))
+    n["noise_size"].setValue(b["noise_size"] * max(t, 1.0) ** 0.7)
+    if t != 1.0 and n["haze_mode"].getValue() == 0:
+        n["haze_mode"].setValue("Volumetric")
 
 
 def apply_look(n):
@@ -168,59 +213,6 @@ def load_look(n, label=None):
 
 
 # ---- Thumbnails --------------------------------------------------------------------------
-
-def render_thumbnails(n, width=160):
-    """A small render of every preset on this frame, shown on the look buttons.
-
-    Renders a temporary copy of the node on a downsized plate, writes a JPEG per look to the
-    temp folder and deletes the copy, so nothing stays in memory."""
-    plate = n.input(0)
-    if plate is None:
-        raise ValueError("connect a plate first")
-    folder = os.path.join(tempfile.gettempdir(), "ezdepthhaze_thumbs")
-    if not os.path.isdir(folder):
-        os.makedirs(folder)
-    keep = [x for x in nuke.selectedNodes()]
-    for x in nuke.allNodes():
-        x.setSelected(False)
-    n.setSelected(True)
-    clip = os.path.join(folder, "_copy.nk")
-    nuke.nodeCopy(clip)
-    n.setSelected(False)
-    copy = nuke.nodePaste(clip)
-    os.remove(clip)
-    small = nuke.nodes.Reformat(type="scale", filter="Impulse")
-    small["scale"].setValue(float(width) / max(plate.width(), 1))
-    small.setInput(0, plate)
-    copy.setInput(0, small)
-    for i in (1, 2):
-        copy.setInput(i, n.input(i))
-    copy["show_before"].setValue(False)
-    out = nuke.nodes.Write(file_type="jpeg", channels="rgb")
-    out["colorspace"].setValue("sRGB")
-    out.setInput(0, copy)
-    paths = []
-    try:
-        for i, name in enumerate(n["preset"].values()):
-            copy["preset"].setValue(name)
-            try:
-                fit(copy, name)
-            except ValueError:
-                _plain(copy, PRESETS[name])
-            path = os.path.join(folder, "%s_%d.jpg" % (n.name(), i)).replace("\\", "/")
-            out["file"].setValue(path)
-            nuke.execute(out, nuke.frame(), nuke.frame())
-            paths.append(path)
-            knob = n.knob("look_%d" % i)
-            if knob is not None:
-                knob.setLabel("<img src=\"%s\"><br>%s" % (path, name))
-    finally:
-        for x in (out, copy, small):
-            nuke.delete(x)
-        for x in keep:
-            x.setSelected(True)
-    return paths
-
 
 def easy_message(text):
     if nuke.GUI:
