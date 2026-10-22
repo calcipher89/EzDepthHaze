@@ -9,9 +9,11 @@ sets the preset's knobs relative to it:
 - noise size, wind, shadow and match distances, scaled with the scene's distances;
 - sky depth, when a far backdrop (a dome or card) stands apart from the terrain.
 
-build_gizmo.py embeds this file in the gizmo's "fit to shot" button, with PRESETS and
-REFERENCE filled in, so Nuke needs no Python module at run time. It only sets knobs once,
-when pressed, so renders on the farm see plain values.
+This is how presets are applied: picking one in the menu, or pressing apply, fits it to the
+shot (or applies it as tuned when there is no depth or camera yet), shows a short summary,
+and offers to move the EzAtmosScatter sun to where the look wants it. build_gizmo.py embeds
+this file in the gizmo, with PRESETS and REFERENCE filled in, so Nuke needs no Python module
+at run time. It only sets knobs when run, so renders on the farm see plain values.
 """
 import math
 import nuke
@@ -139,42 +141,76 @@ def _place(value, ref_alts, alts):
     return value
 
 
-def _sun_note(n, m):
-    """Where the sun is relative to the view, when it's far from what the presets assume."""
-    if n["plate_type"].getValue() == 1 or n.input(1) is None:
-        return []
-    sun = [x for x in _effective(n, "sun_direction", "sun_direction").value()]
+def _atmos(n):
+    """The EzAtmosScatter in the atmos input, through any Dots or NoOps."""
+    a = n.input(2)
+    while a is not None and not a.knob("sun_direction"):
+        a = a.input(0) if a.inputs() else None
+    return a
+
+
+def sun_suggestion(n, preset):
+    """The preset's sun placed relative to this camera, when the current sun is far from it.
+
+    Returns (question, direction, colour) or None."""
+    want = preset.get("sun")
+    atmos = _atmos(n)
+    cam = n.input(1)
+    if not want or atmos is None or cam is None or not cam.knob("world_matrix") or n["plate_type"].getValue() == 1:
+        return None
+    wm = cam["world_matrix"]
+    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))
+    sun = list(atmos["sun_direction"].value())
+    if atmos.knob("sun_from") and atmos["sun_from"].value() == "Auto (HDRI)":
+        with atmos:
+            light = nuke.toNode("Light")
+            if light is not None:
+                sun = [light.sample(c, 0.5, 0.5) for c in ("red", "green", "blue")]
     ln = math.sqrt(sum(x * x for x in sun)) or 1.0
     sun = [x / ln for x in sun]
-    wm = n.input(1)["world_matrix"]
-    fwd = [-wm.getValue(2), -wm.getValue(6), -wm.getValue(10)]
-    az = math.degrees(math.atan2(sun[0], -sun[2]) - math.atan2(fwd[0], -fwd[2]))
+    az = math.degrees(math.atan2(sun[0], -sun[2]) - yaw)
     az = (az + 180.0) % 360.0 - 180.0
     elev = math.degrees(math.asin(max(-1.0, min(1.0, sun[1]))))
-    notes = []
-    if abs(az) > 60.0:
-        notes.append("The sun is %.0f deg %s of where the camera looks; the presets' backlit glow and "
-                     "shafts need it in front." % (abs(az), "right" if az > 0 else "left"))
-    if elev > 20.0:
-        notes.append("The sun is %.0f deg up; the warm looks expect it low (under 10 deg)." % elev)
-    return notes
+    if abs(az - want["azimuth"]) < 25.0 and abs(elev - want["elevation"]) < 5.0:
+        return None
+    a = yaw + math.radians(want["azimuth"])
+    e = math.radians(want["elevation"])
+    direction = [round(math.sin(a) * math.cos(e), 4), round(math.sin(e), 4), round(-math.cos(a) * math.cos(e), 4)]
+    side = "left" if want["azimuth"] < 0 else "right"
+    question = ("The sun is %.0f deg up and %.0f deg %s of the view. This look wants it %.0f deg up, %.0f deg %s.\n\n"
+                "Set %s's sun to that%s?"
+                % (elev, abs(az), "right" if az > 0 else "left", want["elevation"], abs(want["azimuth"]), side,
+                   atmos.name(), " (this switches 'sun from' to Manual)" if atmos["sun_from"].value() != "Manual" else ""))
+    return question, direction, want["color"]
+
+
+def _plain(n, preset):
+    """The preset as tuned, for when there is no depth or camera to fit it to."""
+    for k, v in preset["knobs"].items():
+        n[k].setValue(v)
+    if preset["fog_below_camera"] is not None:
+        cam = n.input(1)
+        if n["plate_type"].getValue() == 0 and cam is not None and cam.knob("world_matrix"):
+            height = cam["world_matrix"].getValue(7) * n["depth_scale"].getValue()
+        else:
+            height = n["latlong_camera_height"].getValue()
+        n["fog_top"].setValue(height - preset["fog_below_camera"])
 
 
 def fit(n, name=None):
-    """Apply the preset picked on `n` (or `name`), fitted to the shot. Returns a summary."""
+    """Apply the preset picked on `n` (or `name`), fitted to the shot. Returns a short summary."""
     name = name or n["preset"].value()
     preset = PRESETS[name]
     ref = REFERENCE
     m = measure(n)
 
-    lines = []
     threshold = n["sky_threshold"].value()
+    backdrop = None
     if m["depth_type"] != 2:
         backdrop = find_backdrop(m["raw"], threshold)
         if backdrop is not None:
             threshold = backdrop
             n["sky_threshold"].setValue(round(backdrop, 3))
-            lines.append("Found a far backdrop: sky depth set to %.6g (raw units)." % backdrop)
     st = _stats(m, threshold)
 
     scale = st["dist"][1] / ref["dist"][1]
@@ -202,16 +238,38 @@ def fit(n, name=None):
     # fitted haze amount over the demo's full distance.
     n["sky_distance"].setValue(round(REFERENCE.get("sky_distance", 250.0) * scale, 3))
 
-    lines.insert(0, "%s fitted: terrain %.0f-%.0f m away (median %.0f m, %.2fx the demo), "
-                    "altitudes %.0f to %.0f m, camera at %.0f m."
-                 % (name, st["dist"][0], st["dist"][2], st["dist"][1], scale, st["alt"][0], st["alt"][10],
-                    st["camera"]))
-    lines.append("haze amount %.3g, fog top %.0f m, fog softness %.0f m, noise size %.0f m."
-                 % (n["haze_amount"].value(), n["fog_top"].value(), n["fog_softness"].value(),
-                    n["noise_size"].value()))
-    lines += _sun_note(n, m)
-    lines.append("Suggested sun: %s." % preset["suggested_sun"])
+    lines = ["%s, fitted to this shot." % name,
+             "Terrain %.1f-%.1f km away, %.2gx the demo's distances." % (st["dist"][0] / 1000.0, st["dist"][2] / 1000.0, scale),
+             "Haze amount %.3g, fog top %.0f m." % (n["haze_amount"].value(), n["fog_top"].value())]
+    if backdrop is not None:
+        lines.append("A far backdrop now counts as sky.")
     return "\n".join(lines)
+
+
+def apply_preset(n):
+    """Apply the picked preset, fitted to the shot when it can be measured, then report it
+    and offer the preset's sun. Used by the apply button and when a preset is picked."""
+    preset = PRESETS[n["preset"].value()]
+    try:
+        summary = fit(n)
+    except ValueError as e:
+        _plain(n, preset)
+        summary = "%s, as tuned on the demo (%s to fit it to this shot)." % (n["preset"].value(), e)
+    offer = sun_suggestion(n, preset)
+    if not nuke.GUI:
+        print(summary)
+        return summary
+    if offer is None:
+        nuke.message(summary)
+        return summary
+    question, direction, colour = offer
+    if nuke.ask(summary + "\n\n" + question):
+        atmos = _atmos(n)
+        atmos["sun_from"].setValue("Manual")
+        atmos["sun_direction"].setValue(direction)
+        if atmos.knob("sun_color"):
+            atmos["sun_color"].setValue(colour)
+    return summary
 
 
 def reference(n):
