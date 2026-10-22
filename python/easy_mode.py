@@ -95,10 +95,25 @@ def rebase(n, relief=None, centre=True):
             base["relief"] = relief
         n["easy_base"].setValue(json.dumps(base))
         if centre:
-            for name, neutral, _ in SLIDERS:
-                n[name].setValue(neutral)
+            for name, _, _ in SLIDERS:
+                n[name].setValue(_neutral(name, base))
             n["look_strength"].setValue(1.0)
     show_visibility(n)
+
+
+def _neutral(name, base):
+    """A slider's middle: where it leaves the look as it is. 'light' sits at 0 when the look
+    has no surface light, so moving it up adds some."""
+    if name == "easy_light":
+        return 1.0 if base.get("surface_add") else 0.0
+    return dict((k, v) for k, v, _ in SLIDERS)[name]
+
+
+def _base(n):
+    try:
+        return json.loads(n["easy_base"].value() or "{}")
+    except ValueError:
+        return {}
 
 
 def apply_easy(n):
@@ -166,12 +181,12 @@ def _apply_sliders(n, b):
 
     # Light: the sunlight falling on the terrain itself, added to the plate.
     li = e["easy_light"]
+    n["surface_add"].setValue(li > 0)
     if b.get("surface_add"):
-        n["surface_add"].setValue(li > 0)
         n["surface_strength"].setValue(b.get("surface_strength", 1.0) * li)
     else:
-        n["surface_add"].setValue(li > 1.0)
-        n["surface_strength"].setValue(max(li - 1.0, 0.0))
+        # The look had none: the slider starts at 0 and adds it.
+        n["surface_strength"].setValue(li)
 
     # Fog: denser and deeper (it rises up the valleys), or some where the look has none.
     f = e["easy_fog"]
@@ -213,18 +228,25 @@ def apply_look(n):
 
 
 def surprise(n):
-    """Random slider values within tasteful limits."""
+    """Random slider values within tasteful limits, scaled by 'surprise strength'."""
+    b = _base(n)
+    k = n["surprise_strength"].value()
     with _Busy():
         for name, _, (lo, hi) in SLIDERS:
-            n[name].setValue(round(random.uniform(lo, hi), 2))
+            mid = _neutral(name, b)
+            v = mid + (random.uniform(lo, hi) - dict((s, m) for s, m, _ in SLIDERS)[name]) * k
+            knob = n[name]
+            v = min(max(v, knob.min()), knob.max()) if hasattr(knob, "min") else v
+            knob.setValue(round(v, 2))
     apply_easy(n)
 
 
 def reset_sliders(n):
     """Centre the sliders: back to the base look."""
+    b = _base(n)
     with _Busy():
-        for name, neutral, _ in SLIDERS:
-            n[name].setValue(neutral)
+        for name, _, _ in SLIDERS:
+            n[name].setValue(_neutral(name, b))
         n["look_strength"].setValue(1.0)
     apply_easy(n)
 
@@ -236,8 +258,8 @@ def reset_look(n):
         for name, script in DEFAULTS.items():
             if n.knob(name):
                 n[name].fromScript(script)
-        for name, neutral, _ in SLIDERS:
-            n[name].setValue(neutral)
+        for name, _, _ in SLIDERS:
+            n[name].setValue(_neutral(name, {"surface_add": n["surface_add"].value()}))
         n["look_strength"].setValue(1.0)
         n["easy_base"].setValue("")
     show_visibility(n)
@@ -248,8 +270,6 @@ def on_knob(n, k):
     """knobChanged, for a knob easy mode looks after (only from the open panel)."""
     if k == "preset":
         apply_look(n)
-    elif k == "my_looks":
-        load_look(n)
     elif k in ("vis_near", "vis_far", "vis_fog"):
         set_visibility(n, k)
     elif k in EASY_KNOBS:
@@ -291,6 +311,9 @@ def analyze(n):
     if raw[len(raw) // 2] < 0.01 and n["depth_type"].getValue() != 2:
         n["depth_type"].setValue("1/Z")
         done.append("The depth looks like 1/Z (Nuke's ScanlineRender): depth type set to 1/Z.")
+    if n["sky_handling"].value() != "Haze Sky":
+        n["sky_handling"].setValue("Haze Sky")
+        done.append("Sky: Haze Sky, so the sky fades into the haze like the terrain.")
     if cam is not None or n["plate_type"].getValue() == 1:
         m = measure(n)
         threshold = n["sky_threshold"].value()
@@ -313,16 +336,22 @@ def analyze(n):
 
 # ---- Looks on disk -----------------------------------------------------------------------
 
-def look_dir(where):
-    d = os.environ.get(LOOK_DIRS[where]["env"]) or LOOK_DIRS[where]["path"]
+def look_dir(n, where):
+    """The User or Studio looks folder: its environment variable when set, else the node's
+    hidden folder knob, else the default from python/ezdepthhaze.py."""
+    d = os.environ.get(LOOK_DIRS[where]["env"])
+    knob = n.knob(where.lower() + "_looks_dir")
+    if not d and knob is not None:
+        d = knob.evaluate() if hasattr(knob, "evaluate") else knob.value()
+    d = d or LOOK_DIRS[where]["path"]
     return os.path.expanduser(d) if d else ""
 
 
-def list_looks():
+def list_looks(n):
     """'User: name' / 'Studio: name' for every saved look."""
     names = []
     for where in ("User", "Studio"):
-        d = look_dir(where)
+        d = look_dir(n, where)
         if d and os.path.isdir(d):
             for f in sorted(os.listdir(d)):
                 if f.endswith(".json"):
@@ -331,23 +360,53 @@ def list_looks():
 
 
 def refresh_look_menu(n):
-    looks = list_looks()
+    looks = list_looks(n)
     n["my_looks"].setValues(looks or ["(no saved looks)"])
     return looks
+
+
+def _backup(path):
+    """Keep a dated copy of a look in the folder's .backup subfolder before it changes."""
+    if not os.path.isfile(path):
+        return None
+    import shutil
+    import time
+    folder = os.path.join(os.path.dirname(path), ".backup")
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    name = os.path.splitext(os.path.basename(path))[0]
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    copy = os.path.join(folder, "%s_%s.json" % (name, stamp))
+    i = 1
+    while os.path.exists(copy):
+        i += 1
+        copy = os.path.join(folder, "%s_%s_%d.json" % (name, stamp, i))
+    shutil.copy2(path, copy)
+    return copy
+
+
+def _picked(n):
+    label = n["my_looks"].value()
+    if ": " not in label:
+        raise ValueError("pick a saved look first")
+    where, name = label.split(": ", 1)
+    return os.path.join(look_dir(n, where), name + ".json")
 
 
 def save_look(n):
     name = n["look_name"].value().strip()
     where = n["save_to"].value()
-    d = look_dir(where)
+    d = look_dir(n, where)
     if not name:
         raise ValueError("type a look name first")
     if not d:
-        raise ValueError("no %s looks folder: set $%s" % (where.lower(), LOOK_DIRS[where]["env"]))
+        raise ValueError("no %s looks folder: set the %s looks folder knob or $%s"
+                         % (where.lower(), where.lower(), LOOK_DIRS[where]["env"]))
     if not os.path.isdir(d):
         os.makedirs(d)
     safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
     path = os.path.join(d, safe + ".json")
+    _backup(path)
     look = {"name": name, "preset": n["preset"].value(),
             "knobs": dict((k, _value(n, k)) for k in LOOK_KNOBS if n.knob(k))}
     with open(path, "w") as f:
@@ -356,12 +415,9 @@ def save_look(n):
     return path
 
 
-def load_look(n, label=None):
-    label = label or n["my_looks"].value()
-    if ": " not in label:
-        return None
-    where, name = label.split(": ", 1)
-    path = os.path.join(look_dir(where), name + ".json")
+def load_look(n):
+    """Apply the saved look picked in the menu."""
+    path = _picked(n)
     with open(path) as f:
         look = json.load(f)
     with _Busy():
@@ -372,6 +428,16 @@ def load_look(n, label=None):
     return path
 
 
+def delete_look(n):
+    """Delete the saved look picked in the menu (after asking), keeping a backup."""
+    path = _picked(n)
+    if nuke.GUI and not nuke.ask("Delete the look '%s'?\n\nA copy is kept in %s."
+                                 % (n["my_looks"].value(), os.path.join(os.path.dirname(path), ".backup"))):
+        return None
+    copy = _backup(path)
+    os.remove(path)
+    refresh_look_menu(n)
+    return copy
 
 
 def easy_message(text):
