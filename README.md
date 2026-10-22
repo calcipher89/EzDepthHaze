@@ -26,7 +26,7 @@ The node then shows up under **Nodes > EzDepthHaze**.
 
 1. Connect the render or plate to `plate`, with its depth in a channel (`depth.Z` by
    default; pick another with *depth channel*).
-2. For a perspective render, connect its Camera to `camera`. For a 360 lat-long render, set
+2. For a perspective render, connect its Camera to `camera` (Dots and NoOps in between are fine). For a 360 lat-long render, set
    *plate* to *Lat-long* and type the *camera height*.
 3. Connect an EzAtmosScatter node to `atmos`. Its `atmos_haze_color` layer (the colour
    infinitely deep haze has in each direction) lights the haze, and with *inherit from
@@ -75,15 +75,24 @@ channel of the plate and adds the layers listed under Layers below.
 
 The node opens on its **Easy** tab:
 
-- **Looks**: a button per preset. *refresh looks* renders a small picture (160 pixels
-  wide) of every look on the current frame onto the buttons; it uses a temporary copy of
-  the node on a downsized plate and deletes it afterwards. Clicking a look applies it,
-  fitted to the shot (see Presets).
+- **look**: picking one applies it, fitted to the shot (see Presets).
 - **look strength**: from clear air (0) to the full look (1).
 - **haze**, **warmth**, **glow**, **shafts**, **fog**, **fog height** and **texture**:
-  big sliders, each driving the knobs underneath (haze amount; haze tint; sun scatter;
-  shadow strength; fog density; fog top, in steps of the terrain's height range; noise
-  amount). They are relative to the look as applied, so the middle is always the look.
+  big sliders, each moving several knobs, relative to the look as applied (the middle is
+  always the look):
+
+  | Slider | Knobs it moves |
+  | --- | --- |
+  | haze | haze amount |
+  | warmth | haze tint (orange or blue) and sky scatter |
+  | glow | sun scatter, more than linearly |
+  | shafts | shadow strength up to the middle; past it full shadows, a sharper penumbra and brighter sunlit air |
+  | fog | fog density and how high the fog reaches; adds fog to looks without any |
+  | fog height | fog top, in steps of the terrain's height range |
+  | texture | noise amount and noise on haze; past the middle, bigger patches |
+
+  Shafts and glow need the sun low and in front of the camera; with the sun behind or
+  high, no slider can bring them out.
 - **surprise me** picks random adjustments within tasteful limits; **reset** centres
   the sliders; **before** shows the plate without haze.
 - **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*.

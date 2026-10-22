@@ -33,8 +33,38 @@ VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"
                 ("Surface Sunlight", "surface"), ("Surface Sun Visibility", "visibility"),
                 ("World Position (P)", "P"), ("Normals (N)", "N")]
 
-# Expressions that read the camera input, or fall back to an identity camera.
-CAM = "[exists parent.input1] ? parent.input1.%s : %s"
+# Camera settings, read from hidden knobs on the group (cam_world_matrix, cam_focal, ...)
+# that find the camera through any Dots or NoOps in the camera input. The default after
+# the name is unused here; the hidden knobs fall back to it.
+CAM = "parent.cam_%s%.0s"
+# Python that sets `c` to the camera in the camera input, through any Dots or NoOps.
+_FIND_CAMERA = ("c = nuke.thisNode().input(1)\n"
+                "while c is not None and not c.knob('world_matrix'):\n"
+                "    c = c.input(0) if c.inputs() else None\n")
+
+
+def _add_camera_knobs(add):
+    """Hidden knobs that will hold the camera's world matrix and lens (see _link_camera_knobs)."""
+    matrix = nuke.Array_Knob("cam_world_matrix", "camera matrix", 16)
+    matrix.setFlag(nuke.INVISIBLE)
+    add(matrix)
+    for name in ("focal", "haperture", "vaperture"):
+        knob = nuke.Double_Knob("cam_" + name, "camera " + name)
+        knob.setFlag(nuke.INVISIBLE)
+        add(knob)
+
+
+def _link_camera_knobs(group):
+    """The camera knobs read the camera at the rendered frame, or an identity camera."""
+    identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    for i in range(16):
+        group["cam_world_matrix"].setExpression(
+            "[python -execlocal {%sret = c['world_matrix'].getValueAt(nuke.frame(), %d) "
+            "if c is not None else %d}]" % (_FIND_CAMERA, i, identity[i]), i)
+    for name, default in (("focal", 35.0), ("haperture", 36.0), ("vaperture", 20.25)):
+        group["cam_" + name].setExpression(
+            "[python -execlocal {%sret = c['%s'].getValueAt(nuke.frame()) "
+            "if c is not None and c.knob('%s') else %g}]" % (_FIND_CAMERA, name, name, default))
 # Expressions that read a setting from the atmos input when 'inherit from atmos' is on.
 ATMOS = "parent.inherit_atmos && [exists parent.input2.%s] ? parent.input2.%s : %s"
 
@@ -73,7 +103,7 @@ def _tool_code():
                    for name, p in ezdepthhaze.PRESETS)
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
-                         "shadow_distance", "match_distance"})
+                         "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -129,18 +159,7 @@ def _on_create_script():
 
 def _add_easy_knobs(add):
     add(nuke.Tab_Knob("easy", "Easy"))
-    add(nuke.Text_Knob("looks_divider", "Looks"))
-    for i, name in enumerate(ezdepthhaze.PRESET_NAMES):
-        look = nuke.PyScript_Knob("look_%d" % i, name, _button(
-            "if n['preset'].value() != %r:\n        n['preset'].setValue(%r)\n    else:\n"
-            "        d['apply_look'](n)" % (name, name)))
-        look.setTooltip("Apply %s, fitted to this shot." % name)
-        add(look)
-    refresh = nuke.PyScript_Knob("refresh_looks", "refresh looks", _button("d['render_thumbnails'](n)"))
-    refresh.setTooltip("Renders a small picture of every look on this frame onto the buttons above. The "
-                       "pictures are 160 pixels wide and the temporary nodes are deleted afterwards.")
-    refresh.setFlag(nuke.STARTLINE)
-    add(refresh)
+    add(nuke.Text_Knob("looks_divider", "Look"))
     preset = nuke.Enumeration_Knob("preset", "look", ezdepthhaze.PRESET_NAMES)
     preset.setTooltip("A starting look, applied as soon as you pick it and fitted to this shot: the depth and "
                       "camera are measured at this frame and haze amount, fog height, noise and distances are "
@@ -205,6 +224,7 @@ def _add_easy_knobs(add):
     base.setFlag(nuke.INVISIBLE)
     add(base)
     # Base64, so no Tcl substitution or script escaping can touch the Python inside.
+    _add_camera_knobs(add)
     code = nuke.String_Knob("tool_code", "tool code")
     code.setFlag(nuke.INVISIBLE)
     add(code, base64.b64encode(_tool_code().encode()).decode())
@@ -369,6 +389,7 @@ def _add_knobs(group, depth_pick, env_pick):
         group.addKnob(knob)
     for name, value in defaults.items():
         group[name].setValue(value)
+    _link_camera_knobs(group)
     group["knobChanged"].setValue(_knob_changed_script())
     group["onCreate"].setValue(_on_create_script())
 
