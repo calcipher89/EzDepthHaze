@@ -379,3 +379,74 @@ def easy_message(text):
         nuke.message(text)
     else:
         print(text)
+
+
+# ---- Layer breakout ----------------------------------------------------------------------
+
+def build_breakout(n):
+    """Rebuild the node's result from its layers next to it, laid out as a merge trunk:
+
+        plate (+ surface_sunlight) x haze_transmittance + haze_sun + haze_sky
+
+    A row of Dots runs right from the node's output with a Shuffle under each; every layer
+    drops down to a Dot level with its Merge on the trunk below the plate, and comes in from
+    the right as the A input. A Difference against the node at the bottom shows it matches."""
+    plate = n.input(0)
+    if plate is None:
+        raise ValueError("connect a plate first")
+    col, step, gap = 180, 90, 34
+    x0, y0 = n.xpos() + 250, n.ypos() + 60
+    with nuke.root():
+        for x in nuke.allNodes():
+            x.setSelected(False)
+        made = []
+
+        def dot(src, x, y):
+            d = nuke.nodes.Dot(xpos=x + gap, ypos=y + 4)
+            d.setInput(0, src)
+            made.append(d)
+            return d
+
+        layers = []
+        if n["surface_add"].value():
+            layers.append(("surface_sunlight", "plus"))
+        layers += [("haze_transmittance", "multiply"), ("haze_sun", "plus"), ("haze_sky", "plus")]
+
+        # The trunk: the plate, down the left column.
+        trunk = dot(plate, x0, y0)
+        # The row of Dots from the node's output, one column per layer.
+        row = dot(n, x0 + col, y0)
+        heads = [row]
+        for i in range(1, len(layers)):
+            row = dot(row, x0 + col * (i + 1), y0)
+            heads.append(row)
+        stream = trunk
+        y = y0 + 160
+        for i, ((layer, op), head) in enumerate(zip(layers, heads)):
+            x = x0 + col * (i + 1)
+            sh = nuke.nodes.Shuffle2(name="%s_%s" % (n.name(), layer), xpos=x, ypos=y0 + 70)
+            sh.setInput(0, head)
+            sh["in1"].setValue(layer)
+            sh["label"].setValue("%s to rgba" % layer)
+            made.append(sh)
+            low = dot(sh, x, y)
+            m = nuke.nodes.Merge2(operation=op, output="rgb", xpos=x0, ypos=y)
+            m.setInput(0, stream)
+            m.setInput(1, low)
+            made.append(m)
+            stream = m
+            y += step
+        # Check: the rebuild against the node, should be black.
+        last = dot(heads[-1], x0 + col * (len(layers) + 1), y0)
+        check_dot = dot(last, x0 + col * (len(layers) + 1), y)
+        check = nuke.nodes.Merge2(name="%s_breakout_check" % n.name(), operation="difference", output="rgb",
+                                  xpos=x0, ypos=y, label="should be black")
+        check.setInput(0, stream)
+        check.setInput(1, check_dot)
+        made.append(check)
+        bd = nuke.nodes.BackdropNode(label="%s breakout" % n.name(), note_font_size=24,
+                                     xpos=x0 - 60, ypos=y0 - 70,
+                                     bdwidth=col * (len(layers) + 1) + 160, bdheight=y - y0 + 160)
+        for m in made:
+            m.setSelected(True)
+    return stream
