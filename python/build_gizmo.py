@@ -103,7 +103,8 @@ def _tool_code():
                    for name, p in ezdepthhaze.PRESETS)
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
-                         "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter"})
+                         "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
+                         "noise_detail", "noise_roughness", "noise_sharpness"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -145,7 +146,8 @@ def _knob_changed_script():
             "    else:\n"
             "        d['apply_easy'](n)\n"
             % (["preset", "advanced", "my_looks", "look_strength", "easy_haze", "easy_warmth", "easy_glow",
-                "easy_shafts", "easy_fog", "easy_fog_height", "easy_texture"],))
+                "easy_shafts", "easy_fog", "easy_fog_height", "easy_fog_softness", "easy_texture",
+                "easy_texture_scale", "easy_texture_detail", "easy_texture_sharpness"],))
 
 
 def _on_create_script():
@@ -183,8 +185,17 @@ def _add_easy_knobs(add):
             ("easy_shafts", "shafts", 0, 2, 1.0, "How strongly the terrain shadows the haze: 0 is no shafts."),
             ("easy_fog", "fog", 0, 3, 1.0, "How dense the valley fog is."),
             ("easy_fog_height", "fog height", -1, 1, 0.0,
-             "Lower or raise the fog, in steps of the terrain's height range."),
-            ("easy_texture", "texture", 0, 3, 1.0, "How much the noise breaks up the haze and fog.")]:
+             "Lower or raise the fog, in steps of the terrain's height range. Low and negative for "
+             "low-lying fog in the valley floors."),
+            ("easy_fog_softness", "fog softness", 0.1, 3, 1.0,
+             "How gradually the fog fades out at its top: low gives a crisp fog bank, high a soft mist."),
+            ("easy_texture", "texture", 0, 3, 1.0, "How much the noise breaks up the haze and fog."),
+            ("easy_texture_scale", "texture scale", 0.2, 3, 1.0,
+             "Size of the noise patches: lower gives smaller, busier patches."),
+            ("easy_texture_detail", "texture detail", 0, 2, 1.0,
+             "Fine detail in the noise: more layers of smaller wisps on the big shapes."),
+            ("easy_texture_sharpness", "texture sharpness", 0, 2, 0.0,
+             "Soft blobs (0) to patches with crisp edges (2).")]:
         knob = nuke.Double_Knob(name, label)
         knob.setRange(lo, hi)
         knob.setTooltip(tip)
@@ -339,6 +350,10 @@ def _add_knobs(group, depth_pick, env_pick):
     detail = nuke.Int_Knob("noise_detail", "noise detail")
     detail.setTooltip("Octaves of noise: more adds finer wisps.")
     add(detail, 4)
+    add(*_double("noise_roughness", "noise roughness", 0.3, 0.8, "How strong the finer layers are: higher "
+                 "gives grainier, more detailed noise.", 0.5))
+    add(*_double("noise_sharpness", "noise sharpness", 1, 6, "Steepens the noise: 1 is soft blobs, higher gives "
+                 "patches with crisp edges.", 1.0))
     wind = nuke.XYZ_Knob("noise_wind", "wind (m/s)")
     wind.setTooltip("Drifts the noise over time.")
     add(wind, [5.0, 0.0, 0.0])
@@ -434,6 +449,8 @@ def _link_haze(node, output):
     _link(node, "noise_size", "parent.noise_size")
     _link(node, "noise_stretch", "parent.noise_stretch")
     _link(node, "noise_detail", "parent.noise_detail")
+    _link(node, "noise_roughness", "parent.noise_roughness")
+    _link(node, "noise_sharpness", "parent.noise_sharpness")
     for i, c in enumerate("xyz"):
         _link(node, "noise_wind", "parent.noise_wind.%s" % c, i)
     _link(node, "noise_time", "frame / root.fps")

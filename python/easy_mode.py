@@ -22,7 +22,9 @@ LOOK_KNOBS = []
 # Easy slider: (knob, neutral value, surprise range).
 SLIDERS = [("easy_haze", 1.0, (0.6, 1.6)), ("easy_warmth", 0.0, (-0.6, 0.6)), ("easy_glow", 1.0, (0.6, 1.8)),
            ("easy_shafts", 1.0, (0.5, 1.4)), ("easy_fog", 1.0, (0.3, 2.0)), ("easy_fog_height", 0.0, (-0.5, 0.5)),
-           ("easy_texture", 1.0, (0.3, 2.0))]
+           ("easy_fog_softness", 1.0, (0.4, 1.6)), ("easy_texture", 1.0, (0.3, 2.0)),
+           ("easy_texture_scale", 1.0, (0.4, 1.6)), ("easy_texture_detail", 1.0, (0.5, 1.8)),
+           ("easy_texture_sharpness", 0.0, (0.0, 1.5))]
 EASY_KNOBS = [name for name, _, _ in SLIDERS] + ["look_strength"]
 
 
@@ -109,17 +111,24 @@ def apply_easy(n):
     top = b["fog_top"] if b["fog_top"] > b["low"] else b["valley"]
     rise = 0.35 * (f - 1.0) * b["relief"]
     n["fog_top"].setValue(top + rise + e["easy_fog_height"] * b["relief"])
+    soft = b["fog_softness"]
     if b["fog_density"] <= 0 and f > 1.0:
-        n["fog_softness"].setValue(max(b["fog_softness"], 0.25 * b["relief"]))
+        soft = max(soft, 0.25 * b["relief"])
+    n["fog_softness"].setValue(soft * e["easy_fog_softness"])
 
-    # Texture: how much the noise breaks up the fog and the haze. Past the middle the
-    # patches also grow, so they don't average out along long rays.
+    # Texture: how much the noise breaks up the fog and the haze, the size of its patches,
+    # how much fine detail they carry and how crisp their edges are.
     t = e["easy_texture"]
     amount = b["noise_amount"] if b["noise_amount"] > 0 else 0.5
     n["noise_amount"].setValue(min(amount * t, 3.0) * s)
     n["noise_on_haze"].setValue(min(max(b["noise_on_haze"], 0.1) * t ** 1.5, 1.0))
-    n["noise_size"].setValue(b["noise_size"] * max(t, 1.0) ** 0.7)
-    if t != 1.0 and n["haze_mode"].getValue() == 0:
+    n["noise_size"].setValue(b["noise_size"] * e["easy_texture_scale"])
+    detail = e["easy_texture_detail"]
+    n["noise_detail"].setValue(int(round(min(max(b.get("noise_detail", 4) + 2.0 * (detail - 1.0), 1), 8))))
+    n["noise_roughness"].setValue(min(max(b.get("noise_roughness", 0.5) + 0.15 * (detail - 1.0), 0.3), 0.8))
+    n["noise_sharpness"].setValue(b.get("noise_sharpness", 1.0) + 2.5 * e["easy_texture_sharpness"])
+    textured = t != 1.0 or e["easy_texture_scale"] != 1.0 or detail != 1.0 or e["easy_texture_sharpness"] != 0.0
+    if textured and n["haze_mode"].getValue() == 0:
         n["haze_mode"].setValue("Volumetric")
 
 
