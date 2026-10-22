@@ -82,6 +82,8 @@ param:
   float noiseSize;
   float noiseStretch;
   int noiseDetail;
+  float noiseRoughness;
+  float noiseSharpness;
   float3 noiseWind;
   float noiseTime;
   float noiseSeed;
@@ -145,6 +147,8 @@ local:
     defineParam(noiseSize, "noise_size", 2000.0f);
     defineParam(noiseStretch, "noise_stretch", 3.0f);
     defineParam(noiseDetail, "noise_detail", 4);
+    defineParam(noiseRoughness, "noise_roughness", 0.5f);
+    defineParam(noiseSharpness, "noise_sharpness", 1.0f);
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
     defineParam(noiseTime, "noise_time", 0.0f);
     defineParam(noiseSeed, "noise_seed", 1.0f);
@@ -259,9 +263,10 @@ local:
       sum += amp * vnoise3(q);
       norm += amp;
       q = float3(q.x * 2.03f + 1.7f, q.y * 2.03f + 9.2f, q.z * 2.03f + 4.1f);
-      amp *= 0.5f;
+      amp *= noiseRoughness;
     }
-    float n = sum / norm;
+    // Sharpness steepens the noise around its middle: soft blobs become patches with edges.
+    float n = clamp(0.5f + (sum / norm - 0.5f) * noiseSharpness, 0.0f, 1.0f);
     return max(1.0f + noiseAmount * 2.5f * (n - 0.5f), 0.0f);
   }
 

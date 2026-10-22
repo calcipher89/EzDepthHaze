@@ -108,13 +108,13 @@ def measure(n, grid=(48, 27)):
 def find_backdrop(raw, threshold):
     """A raw sky depth that splits off a far backdrop, or None.
 
-    Looks for the widest gap (as a ratio) in the sorted depths beyond the median; a backdrop
+    Looks for the widest gap (as a ratio) in the sorted depths past the nearest tenth; a backdrop
     is far further than the terrain in front of it, with nothing in between."""
     v = sorted(x for x in raw if x < threshold)
     if len(v) < 20:
         return None
     best, at = 1.0, None
-    for i in range(len(v) // 2, len(v) - 1):
+    for i in range(len(v) // 10, len(v) - 1):
         if v[i] > 0 and v[i + 1] / v[i] > best:
             best, at = v[i + 1] / v[i], i
     if at is None or best < 3.0 or len(v) - 1 - at < 0.02 * len(v):

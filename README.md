@@ -77,7 +77,7 @@ The node opens on its **Easy** tab:
 
 - **look**: picking one applies it, fitted to the shot (see Presets).
 - **look strength**: from clear air (0) to the full look (1).
-- **haze**, **warmth**, **glow**, **shafts**, **fog**, **fog height** and **texture**:
+- **haze**, **warmth**, **glow**, **shafts**, **fog**, **fog height**, **fog softness** and the four **texture** sliders:
   big sliders, each moving several knobs, relative to the look as applied (the middle is
   always the look):
 
@@ -89,9 +89,15 @@ The node opens on its **Easy** tab:
   | shafts | shadow strength up to the middle; past it full shadows, a sharper penumbra and brighter sunlit air |
   | fog | fog density and how high the fog reaches; adds fog to looks without any |
   | fog height | fog top, in steps of the terrain's height range |
-  | texture | noise amount and noise on haze; past the middle, bigger patches |
+  | fog softness | fog softness: low for a crisp fog bank |
+  | texture | noise amount and noise on haze |
+  | texture scale | noise size |
+  | texture detail | noise detail (octaves) and noise roughness |
+  | texture sharpness | noise sharpness: soft blobs to crisp-edged patches |
 
-  Shafts and glow need the sun low and in front of the camera; with the sun behind or
+  For low-lying fog: *fog* up, *fog height* down until only the valley floors fill, and
+  *fog softness* down for a crisp top. Shafts and glow need the sun low and in front of the
+  camera; with the sun behind or
   high, no slider can bring them out.
 - **surprise me** picks random adjustments within tasteful limits; **reset** centres
   the sliders; **before** shows the plate without haze.
@@ -168,6 +174,8 @@ speed.
 | noise size (m) | 2000 | Size of the largest wisps and banks |
 | noise flatten | 3 | Squashes the noise vertically into layers |
 | noise detail | 4 | Octaves of noise |
+| noise roughness | 0.5 | How strong the finer octaves are; higher is grainier and more detailed |
+| noise sharpness | 1 | Steepens the noise: 1 is soft blobs, higher gives crisp-edged patches |
 | wind (m/s) | (5, 0, 0) | Drifts the noise over time |
 | noise seed | 1 | Changes the pattern |
 
