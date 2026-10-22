@@ -77,7 +77,7 @@ The node opens on its **Easy** tab:
 
 - **look**: picking one applies it, fitted to the shot (see Presets).
 - **look strength**: from clear air (0) to the full look (1).
-- **haze**, **warmth**, **glow**, **shafts**, **fog**, **fog height**, **fog softness** and the four **texture** sliders:
+- **haze**, **warmth**, **glow**, **shafts**, **light**, **shadow**, **fog**, **fog height**, **fog softness** and the four **texture** sliders:
   big sliders, each moving several knobs, relative to the look as applied (the middle is
   always the look):
 
@@ -87,6 +87,8 @@ The node opens on its **Easy** tab:
   | warmth | haze tint (orange or blue) and sky scatter |
   | glow | sun scatter, more than linearly |
   | shafts | shadow strength up to the middle; past it full shadows, a sharper penumbra and brighter sunlit air |
+  | light | surface light (sunlight on the terrain): strength, and turns it on past the middle |
+  | shadow | shadow fill below the middle; less sky light in the shadows above it |
   | fog | fog density and how high the fog reaches; adds fog to looks without any |
   | fog height | fog top, in steps of the terrain's height range |
   | fog softness | fog softness: low for a crisp fog bank |
@@ -99,12 +101,29 @@ The node opens on its **Easy** tab:
   *fog softness* down for a crisp top. Shafts and glow need the sun low and in front of the
   camera; with the sun behind or
   high, no slider can bring them out.
-- **surprise me** picks random adjustments within tasteful limits; **reset** centres
-  the sliders; **before** shows the plate without haze.
+- **surprise me** picks random adjustments within tasteful limits; **centre sliders** puts
+  them back to the look as applied; **before** shows the plate without haze.
 - **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*.
   *saved looks* lists both folders; picking one loads it.
-- **advanced** shows every knob, set to what Easy did, to fine-tune. Turning it off
-  again starts Easy from your tuned values, with the sliders centred.
+- The **Advanced** tab always shows every knob, set to what Easy did. Editing one there
+  makes it Easy's new starting point, with the sliders centred.
+
+At the top of the tab:
+
+- **analyze** checks the inputs and sets up the plate: *units to metres* from the
+  EzAtmosScatter in `atmos` (its own analyze knows the scene's scale), 1/Z depth from the
+  values, and a sky dome or card behind the terrain. It warns about a missing camera or a
+  sun far from where the look wants it.
+- **reset look** puts every look knob back to the node's defaults; the plate settings
+  (depth channel, type, units, sky depth) stay.
+- **view output** picks what rgb shows; **viewer resolution** (Half by default) computes
+  the haze at half or quarter size in the GUI and scales it back up, for about a quarter
+  or a sixteenth of the GPU memory. Renders from a terminal always run at full size.
+- **Visibility**: *haze clear to* (km) keeps the near air clear, *haze fades by* (km) is
+  where terrain has faded into the haze, and *fog fades by* (km) the same through the fog.
+  They follow the sliders, and typing one sets the knobs behind it.
+- **light** adds the sunlight falling on the terrain (surface light); **shadow** lightens
+  (below the middle) or deepens (above) the shadowed haze.
 
 Looks are JSON files in the User folder (`~/.nuke/ezdepthhaze_looks`, or
 `$EZHAZE_USER_LOOKS`) or the Studio folder (`$EZHAZE_STUDIO_LOOKS`). The default paths are
@@ -125,7 +144,7 @@ and colour, with *sun from* set to Manual). *haze tint* colours all the haze lig
 | Clear Day | Light blue aerial perspective, crisp shadows, no fog | 35 degrees up, 60 degrees right, white |
 | Golden Hour | Warm haze, strong shafts, light valley fog | 4 degrees up, 15 degrees left, warm |
 | Valley Fog | A dense fog lake in the valleys, clear air above | 10 degrees up, 30 degrees left, slightly warm |
-| Smoke Haze | Thick brown-orange haze, low contrast | 8 degrees up, 20 degrees left, reddened |
+| Smoke Haze | Brown-orange haze, low contrast | 8 degrees up, 20 degrees left, reddened |
 | Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | None |
 
 ### Fitted to the shot
