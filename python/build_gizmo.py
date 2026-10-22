@@ -173,6 +173,11 @@ def _add_easy_knobs(add):
     reset_look.setTooltip("Puts every look knob back to the node's defaults and centres the sliders. The plate "
                           "settings (depth channel, type, units) are kept.")
     add(reset_look)
+    breakout = nuke.PyScript_Knob("layer_breakout", "layer breakout", _button("d['build_breakout'](n)"))
+    breakout.setTooltip("Builds the result from this node's layers next to it, one Shuffle and Merge per layer: "
+                        "plate (+ surface_sunlight) x haze_transmittance + haze_sun + haze_sky, with a "
+                        "difference check at the bottom that should be black.")
+    add(breakout)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
     view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
                     "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")

@@ -114,6 +114,9 @@ At the top of the tab:
   EzAtmosScatter in `atmos` (its own analyze knows the scene's scale), 1/Z depth from the
   values, and a sky dome or card behind the terrain. It warns about a missing camera or a
   sun far from where the look wants it.
+- **layer breakout** builds the result from the layers next to the node: a row of Dots off
+  its output with a Shuffle per layer, each dropping to a Merge on a trunk that starts from
+  the plate, and a difference check at the bottom that should be black.
 - **reset look** puts every look knob back to the node's defaults; the plate settings
   (depth channel, type, units, sky depth) stay.
 - **view output** picks what rgb shows; **viewer resolution** (Half by default) computes
