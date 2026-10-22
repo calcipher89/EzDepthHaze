@@ -86,6 +86,23 @@ suggests one for each look. *haze tint* colours all the haze light.
 | Smoke Haze | Thick brown-orange haze, low contrast | Dimmed and reddened |
 | Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | Any |
 
+### Fit to shot
+
+The presets were tuned on the demo: terrain 6-130 km away, seen from 4.3 km up. *apply*
+sets their values as they are; **fit to shot** sets them scaled to the shot in the node's
+inputs. It measures the depth and camera at the current frame and sets:
+
+- *haze amount*, so the median terrain pixel gets the demo's amount of haze;
+- *fog top* and *fog softness*, at the same place in the shot's range of terrain altitudes;
+- *noise size*, *wind*, *shadow distance*, *match distance* and *sky distance*, scaled with
+  the scene's distances;
+- *sky depth*, when a far backdrop (a skydome or card) stands well apart from the terrain.
+
+It writes a summary under the button, with a warning when the sun is beside or behind the
+camera or high in the sky, which the presets don't expect. It runs only when pressed, so
+renders see plain knob values. This matches the look, not the physics: a 2 km shot gets far
+denser haze than real air would give it.
+
 The preset values are baked into the gizmo's apply button; edit them in
 `python/ezdepthhaze.py` and rebuild the gizmo.
 
