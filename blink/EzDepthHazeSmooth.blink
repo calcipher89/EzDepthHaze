@@ -1,0 +1,53 @@
+// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.
+//
+// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This
+// averages each pixel with its neighbours, but only those at about the same depth, so the
+// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth
+// (sky) only average with each other.
+//
+// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).
+
+kernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>
+{
+  Image<eRead, eAccessRandom, eEdgeClamped> src;
+  Image<eRead, eAccessRandom, eEdgeClamped> depth;
+  Image<eWrite> dst;
+
+param:
+  float radius;
+  float edge;
+
+  void define()
+  {
+    defineParam(radius, "radius", 2.0f);
+    defineParam(edge, "edge", 0.03f);
+  }
+
+  float key(float d)
+  {
+    // Depth on a log scale, so "about the same depth" means the same ratio near and far.
+    return d > 0.0f ? log(d) : 1e6f;
+  }
+
+  void process(int2 pos)
+  {
+    int r = int(radius + 0.5f);
+    if (r <= 0) {
+      dst() = src(pos.x, pos.y);
+      return;
+    }
+    float kc = key(depth(pos.x, pos.y).x);
+    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);
+    float4 sum = float4(0.0f);
+    float wsum = 0.0f;
+    for (int dy = -r; dy <= r; dy++) {
+      for (int dx = -r; dx <= r; dx++) {
+        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;
+        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);
+        sum += src(pos.x + dx, pos.y + dy) * w;
+        wsum += w;
+      }
+    }
+    dst() = sum / wsum;
+  }
+};

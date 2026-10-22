@@ -82,6 +82,7 @@ param:
   float noiseSize;
   float noiseStretch;
   int noiseDetail;
+  int blueNoise;
   float noiseRoughness;
   float noiseSharpness;
   float3 noiseWind;
@@ -147,6 +148,7 @@ local:
     defineParam(noiseSize, "noise_size", 2000.0f);
     defineParam(noiseStretch, "noise_stretch", 3.0f);
     defineParam(noiseDetail, "noise_detail", 4);
+    defineParam(blueNoise, "blue_noise", 1);
     defineParam(noiseRoughness, "noise_roughness", 0.5f);
     defineParam(noiseSharpness, "noise_sharpness", 1.0f);
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
@@ -226,6 +228,18 @@ local:
   }
 
   // ---- Noise -------------------------------------------------------------------------
+
+  // Per-pixel jitter for the sampling: interleaved gradient noise (blue-noise-like, so the
+  // leftover grain is fine and even), with a golden-ratio offset per use; or plain random.
+  float jitterAt(int2 pos, float k)
+  {
+    if (blueNoise == 0)
+      return hash3(float3(pos.x, pos.y, k));
+    float g = 52.9829189f * (0.06711056f * pos.x + 0.00583715f * pos.y);
+    g = g - floor(g);
+    float v = g + k * 0.6180339887f + noiseSeed * 0.1234f;
+    return v - floor(v);
+  }
 
   float hash3(float3 p)
   {
@@ -432,8 +446,8 @@ local:
         dst() = float4(n.x, n.y, n.z, 1.0f);
         return;
       }
-      float j = hash3(float3(pos.x, pos.y, 3.0f));
-      float3 sun = jitteredSun(hash3(float3(pos.x, pos.y, 5.0f)), hash3(float3(pos.x, pos.y, 7.0f)));
+      float j = jitterAt(pos, 3.0f);
+      float3 sun = jitteredSun(jitterAt(pos, 5.0f), jitterAt(pos, 7.0f));
       float vis = sunVisibility(surfacePoint + n * (1.0f + 0.001f * surfaceDist), origin, sun, shadowSamples * 2, j);
       float3 a = albedoFromPlate != 0 ? float3(src.x, src.y, src.z) : albedo;
       float3 lit = a * surfaceColor * (surfaceStrength * max(dot(n, sunWorld), 0.0f) * vis);
@@ -481,9 +495,9 @@ local:
       // Step the ray: quadratic spacing packs steps towards the camera, jittered per pixel.
       // Fast mode uses exact slabs of the analytic haze; Volumetric adds fog and noise.
       int steps = volumetric != 0 ? marchSteps : 16;
-      float jitter = volumetric != 0 ? hash3(float3(pos.x, pos.y, 17.0f)) : 1.0f;
-      float sj = hash3(float3(pos.x, pos.y, 23.0f));
-      float3 sun = jitteredSun(hash3(float3(pos.x, pos.y, 29.0f)), hash3(float3(pos.x, pos.y, 31.0f)));
+      float jitter = volumetric != 0 ? jitterAt(pos, 17.0f) : 1.0f;
+      float sj = jitterAt(pos, 23.0f);
+      float3 sun = jitteredSun(jitterAt(pos, 29.0f), jitterAt(pos, 31.0f));
       float vis = 1.0f;
       float tPrev = s;
       for (int i = 0; i <= steps; i++) {
