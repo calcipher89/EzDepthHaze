@@ -8,6 +8,12 @@ Target: Nuke 15.1.
 
 ## Installing
 
+No install: `groups/EzDepthHaze_group.nk` is the same node as a plain Group. Import it with
+**File > Import Script** (or paste its text into the node graph) and it works on its own,
+without the gizmo on the plugin path, so it can live in a shot script or a toolset.
+
+As a gizmo:
+
 Clone the repo into `~/.nuke/plugins/EzDepthHaze` and add this line to `~/.nuke/init.py`:
 
 ```python
@@ -183,6 +189,8 @@ from its layers next to the node (plate + surface light, times transmittance, pl
 sky haze, with a difference check) and saves `ezdepthhaze_layer_breakdown.nk`.
 
 ## Rebuilding the gizmo
+
+The build writes both `gizmos/EzDepthHaze.gizmo` and its Group version `groups/EzDepthHaze_group.nk`.
 
 ```
 Nuke15.1.exe --nukex -i -t python/build_gizmo.py
