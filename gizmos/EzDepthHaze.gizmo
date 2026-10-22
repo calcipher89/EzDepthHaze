@@ -17,13 +17,49 @@ add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_insca
 add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
 Gizmo {
  name EzDepthHaze1
- knobChanged "if nuke.thisKnob().name() == 'preset' and nuke.GUI and nuke.thisNode().shown():\n    d = \{\}\n    exec('\"\"\"Fit to shot: apply a preset scaled to the shot in the node\\'s inputs.\\n\\nThe presets were tuned on the demo (terrain 6-130 km away, camera 4.3 km up). This measures\\nthe shot\\'s depth and camera at the current frame, the same way the kernel reads them, and\\nsets the preset\\'s knobs relative to it:\\n\\n- haze amount, so the median terrain pixel gets the demo\\'s amount of haze;\\n- fog top and softness, at the same place in the shot\\'s terrain altitudes;\\n- noise size, wind, shadow and match distances, scaled with the scene\\'s distances;\\n- sky depth, when a far backdrop (a dome or card) stands apart from the terrain.\\n\\nThis is how presets are applied: picking one in the menu, or pressing apply, fits it to the\\nshot (or applies it as tuned when there is no depth or camera yet), shows a short summary,\\nand offers to move the EzAtmosScatter sun to where the look wants it. build_gizmo.py embeds\\nthis file in the gizmo, with PRESETS and REFERENCE filled in, so Nuke needs no Python module\\nat run time. It only sets knobs when run, so renders on the farm see plain values.\\n\"\"\"\\nimport math\\nimport nuke\\n\\nPRESETS = \{\\'Clear Day\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 1.2, \\'match_horizon\\': True, \\'haze_tint\\': \[1.0, 1.0, 1.0], \\'fog_density\\': 0.0, \\'noise_amount\\': 0.2, \\'noise_size\\': 4000.0, \\'noise_stretch\\': 3.0, \\'sun_scatter\\': 1.0, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': None, \\'suggested_sun\\': \\'high, 30-45 degrees, from the side; white, full strength\\', \\'sun\\': \{\\'elevation\\': 35.0, \\'azimuth\\': 60.0, \\'color\\': \[1.0, 1.0, 1.0]\}\}, \\'Golden Hour\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 2.0, \\'match_horizon\\': True, \\'haze_tint\\': \[1.0, 1.0, 1.0], \\'fog_density\\': 1.0, \\'fog_softness\\': 600.0, \\'noise_amount\\': 0.8, \\'noise_size\\': 3000.0, \\'noise_stretch\\': 3.0, \\'sun_scatter\\': 1.4, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2500.0, \\'suggested_sun\\': \\'low, 2-6 degrees, in front of the camera; warm\\', \\'sun\\': \{\\'elevation\\': 4.0, \\'azimuth\\': -15.0, \\'color\\': \[1.0, 0.72, 0.5]\}\}, \\'Valley Fog\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 0.8, \\'match_horizon\\': True, \\'haze_tint\\': \[0.95, 0.98, 1.0], \\'fog_density\\': 4.0, \\'fog_softness\\': 300.0, \\'noise_amount\\': 0.5, \\'noise_size\\': 1500.0, \\'noise_stretch\\': 6.0, \\'sun_scatter\\': 1.2, \\'sky_scatter\\': 1.1, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2300.0, \\'suggested_sun\\': \\'low morning sun, 8-15 degrees; slightly warm\\', \\'sun\\': \{\\'elevation\\': 10.0, \\'azimuth\\': -30.0, \\'color\\': \[1.0, 0.92, 0.85]\}\}, \\'Smoke Haze\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 8.0, \\'match_horizon\\': False, \\'haze_tint\\': \[0.9, 0.68, 0.48], \\'fog_density\\': 0.6, \\'fog_softness\\': 1500.0, \\'noise_amount\\': 0.6, \\'noise_size\\': 4000.0, \\'noise_stretch\\': 2.0, \\'sun_scatter\\': 0.35, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 0.7, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 1000.0, \\'suggested_sun\\': \\'any; a dimmed, reddened sun reads best\\', \\'sun\\': \{\\'elevation\\': 8.0, \\'azimuth\\': -20.0, \\'color\\': \[1.0, 0.72, 0.5]\}\}, \\'Overcast Mist\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 4.0, \\'match_horizon\\': False, \\'haze_tint\\': \[0.85, 0.9, 1.0], \\'fog_density\\': 2.0, \\'fog_softness\\': 800.0, \\'noise_amount\\': 0.9, \\'noise_size\\': 1200.0, \\'noise_stretch\\': 4.0, \\'sun_scatter\\': 0.2, \\'sky_scatter\\': 1.6, \\'shadow_strength\\': 0.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2000.0, \\'suggested_sun\\': \\'any; it hardly shows\\', \\'sun\\': None\}\}\\n# The demo\\'s measurements (measure() on the demo scene); see python/build_gizmo.py.\\nREFERENCE = \{\\'dist\\': \[6496.5, 10173.3, 38953.5], \\'alt\\': \[1634.9, 1834.3, 1985.2, 2119.1, 2236.5, 2363.8, 2421.3, 2546.0, 2669.7, 2814.6, 3111.4], \\'tau\\': 0.173031, \\'camera\\': 4300.0, \\'sky_distance\\': 250.0\}\\n\\n\\ndef _pct(values, p):\\n    v = sorted(values)\\n    if not v:\\n        return 0.0\\n    x = p / 100.0 * (len(v) - 1)\\n    i = int(x)\\n    j = min(i + 1, len(v) - 1)\\n    return v\[i] + (v\[j] - v\[i]) * (x - i)\\n\\n\\ndef _effective(n, name, fallback):\\n    \"\"\"A haze setting as the kernel sees it: from the atmos input when inheriting.\"\"\"\\n    atmos = n.input(2)\\n    if n\[\"inherit_atmos\"].value() and atmos is not None and atmos.knob(name):\\n        return atmos\[name]\\n    return n\[fallback]\\n\\n\\ndef _height_path(c, d, h):\\n    \"\"\"Kernel heightPath(c, 0, d): haze along a ray climbing c per metre, relative to camera height.\"\"\"\\n    if abs(c) * d / h < 1e-4:\\n        return d\\n    return h / c * (1.0 - math.exp(-c * d / h))\\n\\n\\ndef measure(n, grid=(48, 27)):\\n    \"\"\"Distances, altitudes and haze of the shot\\'s terrain, sampled on a grid.\"\"\"\\n    plate = n.input(0)\\n    cam = n.input(1)\\n    if plate is None:\\n        raise ValueError(\"connect a plate with depth first\")\\n    latlong = n\[\"plate_type\"].getValue() == 1\\n    if not latlong and (cam is None or not cam.knob(\"world_matrix\")):\\n        raise ValueError(\"connect the camera first\")\\n    scale = n\[\"depth_scale\"].value()\\n    dtype = int(n\[\"depth_type\"].getValue())\\n    chan = n\[\"depth_channel\"].value()\\n    if latlong:\\n        origin = \[0.0, n\[\"latlong_camera_height\"].value(), 0.0]\\n    else:\\n        m = cam\[\"world_matrix\"]\\n        rows = \[\[m.getValue(r * 4 + c) for c in range(3)] for r in range(3)]\\n        origin = \[m.getValue(3 + 4 * i) * scale for i in range(3)]\\n        hap, vap, focal = cam\[\"haperture\"].value(), cam\[\"vaperture\"].value(), cam\[\"focal\"].value()\\n    sigma = _effective(n, \"haze_density\", \"haze_density\").getValue(1)\\n    h = _effective(n, \"haze_height\", \"haze_height\").value() * 1000.0\\n\\n    w, hgt = plate.width(), plate.height()\\n    raw_all, samples = \[], \[]\\n    for j in range(grid\[1]):\\n        for i in range(grid\[0]):\\n            u, v = (i + 0.5) / grid\[0], (j + 0.5) / grid\[1]\\n            raw = plate.sample(chan, plate.bbox().x() + u * w, plate.bbox().y() + v * hgt)\\n            if latlong:\\n                lon, lat = (u - 0.5) * 2 * math.pi, (v - 0.5) * math.pi\\n                d = \[math.sin(lon) * math.cos(lat), math.sin(lat), -math.cos(lon) * math.cos(lat)]\\n                planar = 1.0\\n            else:\\n                cd = \[(u - 0.5) * hap / focal, (v - 0.5) * vap / focal, -1.0]\\n                planar = math.sqrt(sum(x * x for x in cd))\\n                d = \[sum(rows\[r]\[k] * cd\[k] for k in range(3)) for r in range(3)]\\n                ln = math.sqrt(sum(x * x for x in d))\\n                d = \[x / ln for x in d]\\n            if raw <= 0:\\n                continue\\n            dist = raw if dtype == 0 else raw * planar if dtype == 1 else planar / raw\\n            raw_all.append(raw)\\n            samples.append((raw, dist * scale, d))\\n    return \{\"origin\": origin, \"sigma\": sigma, \"height\": h, \"raw\": raw_all, \"samples\": samples,\\n            \"pixels\": grid\[0] * grid\[1], \"depth_type\": dtype\}\\n\\n\\ndef find_backdrop(raw, threshold):\\n    \"\"\"A raw sky depth that splits off a far backdrop, or None.\\n\\n    Looks for the widest gap (as a ratio) in the sorted depths beyond the median; a backdrop\\n    is far further than the terrain in front of it, with nothing in between.\"\"\"\\n    v = sorted(x for x in raw if x < threshold)\\n    if len(v) < 20:\\n        return None\\n    best, at = 1.0, None\\n    for i in range(len(v) // 2, len(v) - 1):\\n        if v\[i] > 0 and v\[i + 1] / v\[i] > best:\\n            best, at = v\[i + 1] / v\[i], i\\n    if at is None or best < 3.0 or len(v) - 1 - at < 0.02 * len(v):\\n        return None\\n    return math.sqrt(v\[at] * v\[at + 1])\\n\\n\\ndef _stats(m, threshold):\\n    near = \[s for s in m\[\"samples\"] if s\[0] < threshold] if m\[\"depth_type\"] != 2 else m\[\"samples\"]\\n    if len(near) < 10:\\n        raise ValueError(\"too few terrain pixels to measure (is the depth channel right?)\")\\n    o = m\[\"origin\"]\\n    dist = \[s\[1] for s in near]\\n    alt = \[o\[1] + s\[2]\[1] * s\[1] for s in near]\\n    tau = \[m\[\"sigma\"] * _height_path(s\[2]\[1], s\[1], m\[\"height\"]) for s in near]\\n    return \{\"dist\": \[_pct(dist, p) for p in (10, 50, 90)],\\n            \"alt\": \[_pct(alt, p) for p in range(0, 101, 10)],\\n            \"tau\": _pct(tau, 50), \"camera\": o\[1]\}\\n\\n\\ndef _place(value, ref_alts, alts):\\n    \"\"\"The altitude at the same place in `alts` as `value` is in `ref_alts` (deciles).\"\"\"\\n    span_ref = max(ref_alts\[-1] - ref_alts\[0], 1.0)\\n    span = max(alts\[-1] - alts\[0], 1.0)\\n    if value <= ref_alts\[0]:\\n        return alts\[0] - (ref_alts\[0] - value) / span_ref * span\\n    if value >= ref_alts\[-1]:\\n        return alts\[-1] + (value - ref_alts\[-1]) / span_ref * span\\n    for i in range(len(ref_alts) - 1):\\n        a, b = ref_alts\[i], ref_alts\[i + 1]\\n        if a <= value <= b:\\n            f = (value - a) / (b - a) if b > a else 0.0\\n            return alts\[i] + f * (alts\[i + 1] - alts\[i])\\n    return value\\n\\n\\ndef _atmos(n):\\n    \"\"\"The EzAtmosScatter in the atmos input, through any Dots or NoOps.\"\"\"\\n    a = n.input(2)\\n    while a is not None and not a.knob(\"sun_direction\"):\\n        a = a.input(0) if a.inputs() else None\\n    return a\\n\\n\\ndef sun_suggestion(n, preset):\\n    \"\"\"The preset\\'s sun placed relative to this camera, when the current sun is far from it.\\n\\n    Returns (question, direction, colour) or None.\"\"\"\\n    want = preset.get(\"sun\")\\n    atmos = _atmos(n)\\n    cam = n.input(1)\\n    if not want or atmos is None or cam is None or not cam.knob(\"world_matrix\") or n\[\"plate_type\"].getValue() == 1:\\n        return None\\n    wm = cam\[\"world_matrix\"]\\n    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))\\n    sun = list(atmos\[\"sun_direction\"].value())\\n    if atmos.knob(\"sun_from\") and atmos\[\"sun_from\"].value() == \"Auto (HDRI)\":\\n        with atmos:\\n            light = nuke.toNode(\"Light\")\\n            if light is not None:\\n                sun = \[light.sample(c, 0.5, 0.5) for c in (\"red\", \"green\", \"blue\")]\\n    ln = math.sqrt(sum(x * x for x in sun)) or 1.0\\n    sun = \[x / ln for x in sun]\\n    az = math.degrees(math.atan2(sun\[0], -sun\[2]) - yaw)\\n    az = (az + 180.0) % 360.0 - 180.0\\n    elev = math.degrees(math.asin(max(-1.0, min(1.0, sun\[1]))))\\n    if abs(az - want\[\"azimuth\"]) < 25.0 and abs(elev - want\[\"elevation\"]) < 5.0:\\n        return None\\n    a = yaw + math.radians(want\[\"azimuth\"])\\n    e = math.radians(want\[\"elevation\"])\\n    direction = \[round(math.sin(a) * math.cos(e), 4), round(math.sin(e), 4), round(-math.cos(a) * math.cos(e), 4)]\\n    side = \"left\" if want\[\"azimuth\"] < 0 else \"right\"\\n    question = (\"The sun is %.0f deg up and %.0f deg %s of the view. This look wants it %.0f deg up, %.0f deg %s.\\\\n\\\\n\"\\n                \"Set %s\\'s sun to that%s?\"\\n                % (elev, abs(az), \"right\" if az > 0 else \"left\", want\[\"elevation\"], abs(want\[\"azimuth\"]), side,\\n                   atmos.name(), \" (this switches \\'sun from\\' to Manual)\" if atmos\[\"sun_from\"].value() != \"Manual\" else \"\"))\\n    return question, direction, want\[\"color\"]\\n\\n\\ndef _plain(n, preset):\\n    \"\"\"The preset as tuned, for when there is no depth or camera to fit it to.\"\"\"\\n    for k, v in preset\[\"knobs\"].items():\\n        n\[k].setValue(v)\\n    if preset\[\"fog_below_camera\"] is not None:\\n        cam = n.input(1)\\n        if n\[\"plate_type\"].getValue() == 0 and cam is not None and cam.knob(\"world_matrix\"):\\n            height = cam\[\"world_matrix\"].getValue(7) * n\[\"depth_scale\"].getValue()\\n        else:\\n            height = n\[\"latlong_camera_height\"].getValue()\\n        n\[\"fog_top\"].setValue(height - preset\[\"fog_below_camera\"])\\n\\n\\ndef fit(n, name=None):\\n    \"\"\"Apply the preset picked on `n` (or `name`), fitted to the shot. Returns a short summary.\"\"\"\\n    name = name or n\[\"preset\"].value()\\n    preset = PRESETS\[name]\\n    ref = REFERENCE\\n    m = measure(n)\\n\\n    threshold = n\[\"sky_threshold\"].value()\\n    backdrop = None\\n    if m\[\"depth_type\"] != 2:\\n        backdrop = find_backdrop(m\[\"raw\"], threshold)\\n        if backdrop is not None:\\n            threshold = backdrop\\n            n\[\"sky_threshold\"].setValue(round(backdrop, 3))\\n    st = _stats(m, threshold)\\n\\n    scale = st\[\"dist\"]\[1] / ref\[\"dist\"]\[1]\\n    relief = max(st\[\"alt\"]\[9] - st\[\"alt\"]\[1], 1.0) / max(ref\[\"alt\"]\[9] - ref\[\"alt\"]\[1], 1.0)\\n    knobs = dict(preset\[\"knobs\"])\\n    knobs\[\"haze_amount\"] = preset\[\"knobs\"]\[\"haze_amount\"] * ref\[\"tau\"] / max(st\[\"tau\"], 1e-12)\\n    if knobs.get(\"fog_density\"):\\n        knobs\[\"fog_density\"] = preset\[\"knobs\"]\[\"fog_density\"] / scale\\n    if \"fog_softness\" in knobs:\\n        knobs\[\"fog_softness\"] = preset\[\"knobs\"]\[\"fog_softness\"] * relief\\n    for k in (\"noise_size\",):\\n        if k in knobs:\\n            knobs\[k] = preset\[\"knobs\"]\[k] * scale\\n    for k in knobs:\\n        n\[k].setValue(knobs\[k])\\n    if preset\[\"fog_below_camera\"] is not None:\\n        fog_top = _place(ref\[\"camera\"] - preset\[\"fog_below_camera\"], ref\[\"alt\"], st\[\"alt\"])\\n        n\[\"fog_top\"].setValue(round(fog_top, 1))\\n    wind = n\[\"noise_wind\"].value()\\n    speed = math.sqrt(sum(x * x for x in wind)) or 1.0\\n    n\[\"noise_wind\"].setValue(\[x / speed * 5.0 * scale for x in wind] if any(wind) else \[5.0 * scale, 0.0, 0.0])\\n    n\[\"shadow_distance\"].setValue(round(20.0 * scale, 3))\\n    n\[\"match_distance\"].setValue(round(20.0 * scale, 3))\\n    # Sky pixels hazed as if this far away (Haze Sky) take the same scale, or they get the\\n    # fitted haze amount over the demo\\'s full distance.\\n    n\[\"sky_distance\"].setValue(round(REFERENCE.get(\"sky_distance\", 250.0) * scale, 3))\\n\\n    lines = \[\"%s, fitted to this shot.\" % name,\\n             \"Terrain %.1f-%.1f km away, %.2gx the demo\\'s distances.\" % (st\[\"dist\"]\[0] / 1000.0, st\[\"dist\"]\[2] / 1000.0, scale),\\n             \"Haze amount %.3g, fog top %.0f m.\" % (n\[\"haze_amount\"].value(), n\[\"fog_top\"].value())]\\n    if backdrop is not None:\\n        lines.append(\"A far backdrop now counts as sky.\")\\n    return \"\\\\n\".join(lines)\\n\\n\\ndef apply_preset(n):\\n    \"\"\"Apply the picked preset, fitted to the shot when it can be measured, then report it\\n    and offer the preset\\'s sun. Used by the apply button and when a preset is picked.\"\"\"\\n    preset = PRESETS\[n\[\"preset\"].value()]\\n    try:\\n        summary = fit(n)\\n    except ValueError as e:\\n        _plain(n, preset)\\n        summary = \"%s, as tuned on the demo (%s to fit it to this shot).\" % (n\[\"preset\"].value(), e)\\n    offer = sun_suggestion(n, preset)\\n    if not nuke.GUI:\\n        print(summary)\\n        return summary\\n    if offer is None:\\n        nuke.message(summary)\\n        return summary\\n    question, direction, colour = offer\\n    if nuke.ask(summary + \"\\\\n\\\\n\" + question):\\n        atmos = _atmos(n)\\n        atmos\[\"sun_from\"].setValue(\"Manual\")\\n        atmos\[\"sun_direction\"].setValue(direction)\\n        if atmos.knob(\"sun_color\"):\\n            atmos\[\"sun_color\"].setValue(colour)\\n    return summary\\n\\n\\ndef reference(n):\\n    \"\"\"The measurements stored as REFERENCE, taken on the demo scene\\'s node.\"\"\"\\n    m = measure(n)\\n    st = _stats(m, n\[\"sky_threshold\"].value())\\n    return \{\"dist\": st\[\"dist\"], \"alt\": st\[\"alt\"], \"tau\": st\[\"tau\"], \"camera\": st\[\"camera\"]\}\\n', d)\n    d\['apply_preset'](nuke.thisNode())\n"
+ onCreate "n = nuke.thisNode()\nif n.knob('tool_code') and not n\['advanced'].value():\n    d = \{\}\n    exec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\n    d\['set_advanced'](n, False)\n"
+ knobChanged "k = nuke.thisKnob().name()\nn = nuke.thisNode()\nif k == 'showPanel' and n.knob('tool_code'):\n    d = \{\}\n    exec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\n    d\['set_advanced'](n, False)\n    d\['refresh_look_menu'](n)\nelif k in \['preset', 'advanced', 'my_looks', 'look_strength', 'easy_haze', 'easy_warmth', 'easy_glow', 'easy_shafts', 'easy_fog', 'easy_fog_height', 'easy_texture'] and nuke.GUI and n.shown():\n    d = \{\}\n    exec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\n    if k == 'preset':\n        d\['apply_look'](n)\n    elif k == 'advanced':\n        d\['set_advanced'](n)\n    elif k == 'my_looks':\n        d\['load_look'](n)\n    else:\n        d\['apply_easy'](n)\n"
  tile_color 0x6a8fa5ff
  selected true
- addUserKnob {20 ezdepthhaze l EzDepthHaze}
- addUserKnob {4 preset t "A starting look, applied as soon as you pick it and fitted to this shot: the depth and camera are measured at this frame and haze amount, fog height, noise and distances are scaled to match the demo the presets were tuned on. Every knob stays editable afterwards. Afterwards it offers to move the EzAtmosScatter sun to where the look wants it:\nClear Day: sun high, 30-45 degrees, from the side; white, full strength.\nGolden Hour: sun low, 2-6 degrees, in front of the camera; warm.\nValley Fog: sun low morning sun, 8-15 degrees; slightly warm.\nSmoke Haze: sun any; a dimmed, reddened sun reads best.\nOvercast Mist: sun any; it hardly shows." M {"Clear Day" "Golden Hour" "Valley Fog" "Smoke Haze" "Overcast Mist"}}
+ addUserKnob {20 easy l Easy}
+ addUserKnob {26 looks_divider l Looks}
+ addUserKnob {22 look_0 l "Clear Day" t "Apply Clear Day, fitted to this shot." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    if n\['preset'].value() != 'Clear Day':\n        n\['preset'].setValue('Clear Day')\n    else:\n        d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {22 look_1 l "Golden Hour" t "Apply Golden Hour, fitted to this shot." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    if n\['preset'].value() != 'Golden Hour':\n        n\['preset'].setValue('Golden Hour')\n    else:\n        d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {22 look_2 l "Valley Fog" t "Apply Valley Fog, fitted to this shot." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    if n\['preset'].value() != 'Valley Fog':\n        n\['preset'].setValue('Valley Fog')\n    else:\n        d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {22 look_3 l "Smoke Haze" t "Apply Smoke Haze, fitted to this shot." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    if n\['preset'].value() != 'Smoke Haze':\n        n\['preset'].setValue('Smoke Haze')\n    else:\n        d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {22 look_4 l "Overcast Mist" t "Apply Overcast Mist, fitted to this shot." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    if n\['preset'].value() != 'Overcast Mist':\n        n\['preset'].setValue('Overcast Mist')\n    else:\n        d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {22 refresh_looks l "refresh looks" t "Renders a small picture of every look on this frame onto the buttons above. The pictures are 160 pixels wide and the temporary nodes are deleted afterwards." T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['render_thumbnails'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n" +STARTLINE}
+ addUserKnob {4 preset l look t "A starting look, applied as soon as you pick it and fitted to this shot: the depth and camera are measured at this frame and haze amount, fog height, noise and distances are scaled to match the demo the presets were tuned on. Afterwards it offers to move the EzAtmosScatter sun to where the look wants it:\nClear Day: sun high, 30-45 degrees, from the side; white, full strength.\nGolden Hour: sun low, 2-6 degrees, in front of the camera; warm.\nValley Fog: sun low morning sun, 8-15 degrees; slightly warm.\nSmoke Haze: sun any; a dimmed, reddened sun reads best.\nOvercast Mist: sun any; it hardly shows." M {"Clear Day" "Golden Hour" "Valley Fog" "Smoke Haze" "Overcast Mist"}}
  preset "Golden Hour"
- addUserKnob {22 apply_preset l apply t "Applies the picked preset again, fitted to the shot: e.g. after connecting the plate and camera, or to undo your tweaks." -STARTLINE T "d = \{\}\nexec('\"\"\"Fit to shot: apply a preset scaled to the shot in the node\\'s inputs.\\n\\nThe presets were tuned on the demo (terrain 6-130 km away, camera 4.3 km up). This measures\\nthe shot\\'s depth and camera at the current frame, the same way the kernel reads them, and\\nsets the preset\\'s knobs relative to it:\\n\\n- haze amount, so the median terrain pixel gets the demo\\'s amount of haze;\\n- fog top and softness, at the same place in the shot\\'s terrain altitudes;\\n- noise size, wind, shadow and match distances, scaled with the scene\\'s distances;\\n- sky depth, when a far backdrop (a dome or card) stands apart from the terrain.\\n\\nThis is how presets are applied: picking one in the menu, or pressing apply, fits it to the\\nshot (or applies it as tuned when there is no depth or camera yet), shows a short summary,\\nand offers to move the EzAtmosScatter sun to where the look wants it. build_gizmo.py embeds\\nthis file in the gizmo, with PRESETS and REFERENCE filled in, so Nuke needs no Python module\\nat run time. It only sets knobs when run, so renders on the farm see plain values.\\n\"\"\"\\nimport math\\nimport nuke\\n\\nPRESETS = \{\\'Clear Day\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 1.2, \\'match_horizon\\': True, \\'haze_tint\\': \[1.0, 1.0, 1.0], \\'fog_density\\': 0.0, \\'noise_amount\\': 0.2, \\'noise_size\\': 4000.0, \\'noise_stretch\\': 3.0, \\'sun_scatter\\': 1.0, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': None, \\'suggested_sun\\': \\'high, 30-45 degrees, from the side; white, full strength\\', \\'sun\\': \{\\'elevation\\': 35.0, \\'azimuth\\': 60.0, \\'color\\': \[1.0, 1.0, 1.0]\}\}, \\'Golden Hour\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 2.0, \\'match_horizon\\': True, \\'haze_tint\\': \[1.0, 1.0, 1.0], \\'fog_density\\': 1.0, \\'fog_softness\\': 600.0, \\'noise_amount\\': 0.8, \\'noise_size\\': 3000.0, \\'noise_stretch\\': 3.0, \\'sun_scatter\\': 1.4, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2500.0, \\'suggested_sun\\': \\'low, 2-6 degrees, in front of the camera; warm\\', \\'sun\\': \{\\'elevation\\': 4.0, \\'azimuth\\': -15.0, \\'color\\': \[1.0, 0.72, 0.5]\}\}, \\'Valley Fog\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 0.8, \\'match_horizon\\': True, \\'haze_tint\\': \[0.95, 0.98, 1.0], \\'fog_density\\': 4.0, \\'fog_softness\\': 300.0, \\'noise_amount\\': 0.5, \\'noise_size\\': 1500.0, \\'noise_stretch\\': 6.0, \\'sun_scatter\\': 1.2, \\'sky_scatter\\': 1.1, \\'shadow_strength\\': 1.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2300.0, \\'suggested_sun\\': \\'low morning sun, 8-15 degrees; slightly warm\\', \\'sun\\': \{\\'elevation\\': 10.0, \\'azimuth\\': -30.0, \\'color\\': \[1.0, 0.92, 0.85]\}\}, \\'Smoke Haze\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 8.0, \\'match_horizon\\': False, \\'haze_tint\\': \[0.9, 0.68, 0.48], \\'fog_density\\': 0.6, \\'fog_softness\\': 1500.0, \\'noise_amount\\': 0.6, \\'noise_size\\': 4000.0, \\'noise_stretch\\': 2.0, \\'sun_scatter\\': 0.35, \\'sky_scatter\\': 1.0, \\'shadow_strength\\': 0.7, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 1000.0, \\'suggested_sun\\': \\'any; a dimmed, reddened sun reads best\\', \\'sun\\': \{\\'elevation\\': 8.0, \\'azimuth\\': -20.0, \\'color\\': \[1.0, 0.72, 0.5]\}\}, \\'Overcast Mist\\': \{\\'knobs\\': \{\\'haze_mode\\': 1, \\'haze_amount\\': 4.0, \\'match_horizon\\': False, \\'haze_tint\\': \[0.85, 0.9, 1.0], \\'fog_density\\': 2.0, \\'fog_softness\\': 800.0, \\'noise_amount\\': 0.9, \\'noise_size\\': 1200.0, \\'noise_stretch\\': 4.0, \\'sun_scatter\\': 0.2, \\'sky_scatter\\': 1.6, \\'shadow_strength\\': 0.0, \\'shadow_fill\\': \[0.0, 0.0, 0.0]\}, \\'fog_below_camera\\': 2000.0, \\'suggested_sun\\': \\'any; it hardly shows\\', \\'sun\\': None\}\}\\n# The demo\\'s measurements (measure() on the demo scene); see python/build_gizmo.py.\\nREFERENCE = \{\\'dist\\': \[6496.5, 10173.3, 38953.5], \\'alt\\': \[1634.9, 1834.3, 1985.2, 2119.1, 2236.5, 2363.8, 2421.3, 2546.0, 2669.7, 2814.6, 3111.4], \\'tau\\': 0.173031, \\'camera\\': 4300.0, \\'sky_distance\\': 250.0\}\\n\\n\\ndef _pct(values, p):\\n    v = sorted(values)\\n    if not v:\\n        return 0.0\\n    x = p / 100.0 * (len(v) - 1)\\n    i = int(x)\\n    j = min(i + 1, len(v) - 1)\\n    return v\[i] + (v\[j] - v\[i]) * (x - i)\\n\\n\\ndef _effective(n, name, fallback):\\n    \"\"\"A haze setting as the kernel sees it: from the atmos input when inheriting.\"\"\"\\n    atmos = n.input(2)\\n    if n\[\"inherit_atmos\"].value() and atmos is not None and atmos.knob(name):\\n        return atmos\[name]\\n    return n\[fallback]\\n\\n\\ndef _height_path(c, d, h):\\n    \"\"\"Kernel heightPath(c, 0, d): haze along a ray climbing c per metre, relative to camera height.\"\"\"\\n    if abs(c) * d / h < 1e-4:\\n        return d\\n    return h / c * (1.0 - math.exp(-c * d / h))\\n\\n\\ndef measure(n, grid=(48, 27)):\\n    \"\"\"Distances, altitudes and haze of the shot\\'s terrain, sampled on a grid.\"\"\"\\n    plate = n.input(0)\\n    cam = n.input(1)\\n    if plate is None:\\n        raise ValueError(\"connect a plate with depth first\")\\n    latlong = n\[\"plate_type\"].getValue() == 1\\n    if not latlong and (cam is None or not cam.knob(\"world_matrix\")):\\n        raise ValueError(\"connect the camera first\")\\n    scale = n\[\"depth_scale\"].value()\\n    dtype = int(n\[\"depth_type\"].getValue())\\n    chan = n\[\"depth_channel\"].value()\\n    if latlong:\\n        origin = \[0.0, n\[\"latlong_camera_height\"].value(), 0.0]\\n    else:\\n        m = cam\[\"world_matrix\"]\\n        rows = \[\[m.getValue(r * 4 + c) for c in range(3)] for r in range(3)]\\n        origin = \[m.getValue(3 + 4 * i) * scale for i in range(3)]\\n        hap, vap, focal = cam\[\"haperture\"].value(), cam\[\"vaperture\"].value(), cam\[\"focal\"].value()\\n    sigma = _effective(n, \"haze_density\", \"haze_density\").getValue(1)\\n    h = _effective(n, \"haze_height\", \"haze_height\").value() * 1000.0\\n\\n    w, hgt = plate.width(), plate.height()\\n    raw_all, samples = \[], \[]\\n    for j in range(grid\[1]):\\n        for i in range(grid\[0]):\\n            u, v = (i + 0.5) / grid\[0], (j + 0.5) / grid\[1]\\n            raw = plate.sample(chan, plate.bbox().x() + u * w, plate.bbox().y() + v * hgt)\\n            if latlong:\\n                lon, lat = (u - 0.5) * 2 * math.pi, (v - 0.5) * math.pi\\n                d = \[math.sin(lon) * math.cos(lat), math.sin(lat), -math.cos(lon) * math.cos(lat)]\\n                planar = 1.0\\n            else:\\n                cd = \[(u - 0.5) * hap / focal, (v - 0.5) * vap / focal, -1.0]\\n                planar = math.sqrt(sum(x * x for x in cd))\\n                d = \[sum(rows\[r]\[k] * cd\[k] for k in range(3)) for r in range(3)]\\n                ln = math.sqrt(sum(x * x for x in d))\\n                d = \[x / ln for x in d]\\n            if raw <= 0:\\n                continue\\n            dist = raw if dtype == 0 else raw * planar if dtype == 1 else planar / raw\\n            raw_all.append(raw)\\n            samples.append((raw, dist * scale, d))\\n    return \{\"origin\": origin, \"sigma\": sigma, \"height\": h, \"raw\": raw_all, \"samples\": samples,\\n            \"pixels\": grid\[0] * grid\[1], \"depth_type\": dtype\}\\n\\n\\ndef find_backdrop(raw, threshold):\\n    \"\"\"A raw sky depth that splits off a far backdrop, or None.\\n\\n    Looks for the widest gap (as a ratio) in the sorted depths beyond the median; a backdrop\\n    is far further than the terrain in front of it, with nothing in between.\"\"\"\\n    v = sorted(x for x in raw if x < threshold)\\n    if len(v) < 20:\\n        return None\\n    best, at = 1.0, None\\n    for i in range(len(v) // 2, len(v) - 1):\\n        if v\[i] > 0 and v\[i + 1] / v\[i] > best:\\n            best, at = v\[i + 1] / v\[i], i\\n    if at is None or best < 3.0 or len(v) - 1 - at < 0.02 * len(v):\\n        return None\\n    return math.sqrt(v\[at] * v\[at + 1])\\n\\n\\ndef _stats(m, threshold):\\n    near = \[s for s in m\[\"samples\"] if s\[0] < threshold] if m\[\"depth_type\"] != 2 else m\[\"samples\"]\\n    if len(near) < 10:\\n        raise ValueError(\"too few terrain pixels to measure (is the depth channel right?)\")\\n    o = m\[\"origin\"]\\n    dist = \[s\[1] for s in near]\\n    alt = \[o\[1] + s\[2]\[1] * s\[1] for s in near]\\n    tau = \[m\[\"sigma\"] * _height_path(s\[2]\[1], s\[1], m\[\"height\"]) for s in near]\\n    return \{\"dist\": \[_pct(dist, p) for p in (10, 50, 90)],\\n            \"alt\": \[_pct(alt, p) for p in range(0, 101, 10)],\\n            \"tau\": _pct(tau, 50), \"camera\": o\[1]\}\\n\\n\\ndef _place(value, ref_alts, alts):\\n    \"\"\"The altitude at the same place in `alts` as `value` is in `ref_alts` (deciles).\"\"\"\\n    span_ref = max(ref_alts\[-1] - ref_alts\[0], 1.0)\\n    span = max(alts\[-1] - alts\[0], 1.0)\\n    if value <= ref_alts\[0]:\\n        return alts\[0] - (ref_alts\[0] - value) / span_ref * span\\n    if value >= ref_alts\[-1]:\\n        return alts\[-1] + (value - ref_alts\[-1]) / span_ref * span\\n    for i in range(len(ref_alts) - 1):\\n        a, b = ref_alts\[i], ref_alts\[i + 1]\\n        if a <= value <= b:\\n            f = (value - a) / (b - a) if b > a else 0.0\\n            return alts\[i] + f * (alts\[i + 1] - alts\[i])\\n    return value\\n\\n\\ndef _atmos(n):\\n    \"\"\"The EzAtmosScatter in the atmos input, through any Dots or NoOps.\"\"\"\\n    a = n.input(2)\\n    while a is not None and not a.knob(\"sun_direction\"):\\n        a = a.input(0) if a.inputs() else None\\n    return a\\n\\n\\ndef sun_suggestion(n, preset):\\n    \"\"\"The preset\\'s sun placed relative to this camera, when the current sun is far from it.\\n\\n    Returns (question, direction, colour) or None.\"\"\"\\n    want = preset.get(\"sun\")\\n    atmos = _atmos(n)\\n    cam = n.input(1)\\n    if not want or atmos is None or cam is None or not cam.knob(\"world_matrix\") or n\[\"plate_type\"].getValue() == 1:\\n        return None\\n    wm = cam\[\"world_matrix\"]\\n    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))\\n    sun = list(atmos\[\"sun_direction\"].value())\\n    if atmos.knob(\"sun_from\") and atmos\[\"sun_from\"].value() == \"Auto (HDRI)\":\\n        with atmos:\\n            light = nuke.toNode(\"Light\")\\n            if light is not None:\\n                sun = \[light.sample(c, 0.5, 0.5) for c in (\"red\", \"green\", \"blue\")]\\n    ln = math.sqrt(sum(x * x for x in sun)) or 1.0\\n    sun = \[x / ln for x in sun]\\n    az = math.degrees(math.atan2(sun\[0], -sun\[2]) - yaw)\\n    az = (az + 180.0) % 360.0 - 180.0\\n    elev = math.degrees(math.asin(max(-1.0, min(1.0, sun\[1]))))\\n    if abs(az - want\[\"azimuth\"]) < 25.0 and abs(elev - want\[\"elevation\"]) < 5.0:\\n        return None\\n    a = yaw + math.radians(want\[\"azimuth\"])\\n    e = math.radians(want\[\"elevation\"])\\n    direction = \[round(math.sin(a) * math.cos(e), 4), round(math.sin(e), 4), round(-math.cos(a) * math.cos(e), 4)]\\n    side = \"left\" if want\[\"azimuth\"] < 0 else \"right\"\\n    question = (\"The sun is %.0f deg up and %.0f deg %s of the view. This look wants it %.0f deg up, %.0f deg %s.\\\\n\\\\n\"\\n                \"Set %s\\'s sun to that%s?\"\\n                % (elev, abs(az), \"right\" if az > 0 else \"left\", want\[\"elevation\"], abs(want\[\"azimuth\"]), side,\\n                   atmos.name(), \" (this switches \\'sun from\\' to Manual)\" if atmos\[\"sun_from\"].value() != \"Manual\" else \"\"))\\n    return question, direction, want\[\"color\"]\\n\\n\\ndef _plain(n, preset):\\n    \"\"\"The preset as tuned, for when there is no depth or camera to fit it to.\"\"\"\\n    for k, v in preset\[\"knobs\"].items():\\n        n\[k].setValue(v)\\n    if preset\[\"fog_below_camera\"] is not None:\\n        cam = n.input(1)\\n        if n\[\"plate_type\"].getValue() == 0 and cam is not None and cam.knob(\"world_matrix\"):\\n            height = cam\[\"world_matrix\"].getValue(7) * n\[\"depth_scale\"].getValue()\\n        else:\\n            height = n\[\"latlong_camera_height\"].getValue()\\n        n\[\"fog_top\"].setValue(height - preset\[\"fog_below_camera\"])\\n\\n\\ndef fit(n, name=None):\\n    \"\"\"Apply the preset picked on `n` (or `name`), fitted to the shot. Returns a short summary.\"\"\"\\n    name = name or n\[\"preset\"].value()\\n    preset = PRESETS\[name]\\n    ref = REFERENCE\\n    m = measure(n)\\n\\n    threshold = n\[\"sky_threshold\"].value()\\n    backdrop = None\\n    if m\[\"depth_type\"] != 2:\\n        backdrop = find_backdrop(m\[\"raw\"], threshold)\\n        if backdrop is not None:\\n            threshold = backdrop\\n            n\[\"sky_threshold\"].setValue(round(backdrop, 3))\\n    st = _stats(m, threshold)\\n\\n    scale = st\[\"dist\"]\[1] / ref\[\"dist\"]\[1]\\n    relief = max(st\[\"alt\"]\[9] - st\[\"alt\"]\[1], 1.0) / max(ref\[\"alt\"]\[9] - ref\[\"alt\"]\[1], 1.0)\\n    knobs = dict(preset\[\"knobs\"])\\n    knobs\[\"haze_amount\"] = preset\[\"knobs\"]\[\"haze_amount\"] * ref\[\"tau\"] / max(st\[\"tau\"], 1e-12)\\n    if knobs.get(\"fog_density\"):\\n        knobs\[\"fog_density\"] = preset\[\"knobs\"]\[\"fog_density\"] / scale\\n    if \"fog_softness\" in knobs:\\n        knobs\[\"fog_softness\"] = preset\[\"knobs\"]\[\"fog_softness\"] * relief\\n    for k in (\"noise_size\",):\\n        if k in knobs:\\n            knobs\[k] = preset\[\"knobs\"]\[k] * scale\\n    for k in knobs:\\n        n\[k].setValue(knobs\[k])\\n    if preset\[\"fog_below_camera\"] is not None:\\n        fog_top = _place(ref\[\"camera\"] - preset\[\"fog_below_camera\"], ref\[\"alt\"], st\[\"alt\"])\\n        n\[\"fog_top\"].setValue(round(fog_top, 1))\\n    wind = n\[\"noise_wind\"].value()\\n    speed = math.sqrt(sum(x * x for x in wind)) or 1.0\\n    n\[\"noise_wind\"].setValue(\[x / speed * 5.0 * scale for x in wind] if any(wind) else \[5.0 * scale, 0.0, 0.0])\\n    n\[\"shadow_distance\"].setValue(round(20.0 * scale, 3))\\n    n\[\"match_distance\"].setValue(round(20.0 * scale, 3))\\n    # Sky pixels hazed as if this far away (Haze Sky) take the same scale, or they get the\\n    # fitted haze amount over the demo\\'s full distance.\\n    n\[\"sky_distance\"].setValue(round(REFERENCE.get(\"sky_distance\", 250.0) * scale, 3))\\n\\n    lines = \[\"%s, fitted to this shot.\" % name,\\n             \"Terrain %.1f-%.1f km away, %.2gx the demo\\'s distances.\" % (st\[\"dist\"]\[0] / 1000.0, st\[\"dist\"]\[2] / 1000.0, scale),\\n             \"Haze amount %.3g, fog top %.0f m.\" % (n\[\"haze_amount\"].value(), n\[\"fog_top\"].value())]\\n    if backdrop is not None:\\n        lines.append(\"A far backdrop now counts as sky.\")\\n    return \"\\\\n\".join(lines)\\n\\n\\ndef apply_preset(n):\\n    \"\"\"Apply the picked preset, fitted to the shot when it can be measured, then report it\\n    and offer the preset\\'s sun. Used by the apply button and when a preset is picked.\"\"\"\\n    preset = PRESETS\[n\[\"preset\"].value()]\\n    try:\\n        summary = fit(n)\\n    except ValueError as e:\\n        _plain(n, preset)\\n        summary = \"%s, as tuned on the demo (%s to fit it to this shot).\" % (n\[\"preset\"].value(), e)\\n    offer = sun_suggestion(n, preset)\\n    if not nuke.GUI:\\n        print(summary)\\n        return summary\\n    if offer is None:\\n        nuke.message(summary)\\n        return summary\\n    question, direction, colour = offer\\n    if nuke.ask(summary + \"\\\\n\\\\n\" + question):\\n        atmos = _atmos(n)\\n        atmos\[\"sun_from\"].setValue(\"Manual\")\\n        atmos\[\"sun_direction\"].setValue(direction)\\n        if atmos.knob(\"sun_color\"):\\n            atmos\[\"sun_color\"].setValue(colour)\\n    return summary\\n\\n\\ndef reference(n):\\n    \"\"\"The measurements stored as REFERENCE, taken on the demo scene\\'s node.\"\"\"\\n    m = measure(n)\\n    st = _stats(m, n\[\"sky_threshold\"].value())\\n    return \{\"dist\": st\[\"dist\"], \"alt\": st\[\"alt\"], \"tau\": st\[\"tau\"], \"camera\": st\[\"camera\"]\}\\n', d)\nd\['apply_preset'](nuke.thisNode())\n"}
+ addUserKnob {22 apply_preset l apply t "Applies the look again, fitted to the shot: e.g. after connecting the plate and camera, or to start over." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['apply_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {7 look_strength l "look strength" t "From clear air (0) to the full look (1)."}
+ look_strength 1
+ addUserKnob {26 adjust_divider l Adjust}
+ addUserKnob {7 easy_haze l haze t "How thick the haze is." R 0 3}
+ easy_haze 1
+ addUserKnob {7 easy_warmth l warmth t "Cooler (blue) to warmer (orange) haze light." R -1 1}
+ addUserKnob {7 easy_glow l glow t "How bright the sunlit haze is, around and towards the sun." R 0 3}
+ easy_glow 1
+ addUserKnob {7 easy_shafts l shafts t "How strongly the terrain shadows the haze: 0 is no shafts." R 0 2}
+ easy_shafts 1
+ addUserKnob {7 easy_fog l fog t "How dense the valley fog is." R 0 3}
+ easy_fog 1
+ addUserKnob {7 easy_fog_height l "fog height" t "Lower or raise the fog, in steps of the terrain's height range." R -1 1}
+ addUserKnob {7 easy_texture l texture t "How much the noise breaks up the haze and fog." R 0 3}
+ easy_texture 1
+ addUserKnob {22 surprise_me l "surprise me" t "Random adjustments within tasteful limits." T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['surprise'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n" +STARTLINE}
+ addUserKnob {22 reset_easy l reset t "Centres the sliders, back to the look as applied." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['reset_sliders'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {6 show_before l before t "Shows the plate without haze, to compare." -STARTLINE}
+ addUserKnob {26 save_divider l "My Looks"}
+ addUserKnob {4 my_looks l "saved looks" t "Looks saved by you (User) or shared by the studio (Studio). Picking one loads it." M {"(no saved looks)"}}
+ addUserKnob {1 look_name l name}
+ addUserKnob {4 save_to l "save to" t "User: ~/.nuke/ezdepthhaze_looks (or \$EZHAZE_USER_LOOKS). Studio: \$EZHAZE_STUDIO_LOOKS, set by your pipeline. The folders are set in python/ezdepthhaze.py." -STARTLINE M {User Studio}}
+ addUserKnob {22 save_look l "save look" -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['easy_message']('Saved ' + d\['save_look'](n))\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {6 advanced t "Shows every knob, set to what Easy did, to fine-tune. Turning it off again starts Easy from your tuned values." +STARTLINE}
+ addUserKnob {1 easy_base l "easy base" +INVISIBLE}
+ addUserKnob {1 tool_code l "tool code" +INVISIBLE}
+ tool_code IiIiRml0IHRvIHNob3Q6IGFwcGx5IGEgcHJlc2V0IHNjYWxlZCB0byB0aGUgc2hvdCBpbiB0aGUgbm9kZSdzIGlucHV0cy4KClRoZSBwcmVzZXRzIHdlcmUgdHVuZWQgb24gdGhlIGRlbW8gKHRlcnJhaW4gNi0xMzAga20gYXdheSwgY2FtZXJhIDQuMyBrbSB1cCkuIFRoaXMgbWVhc3VyZXMKdGhlIHNob3QncyBkZXB0aCBhbmQgY2FtZXJhIGF0IHRoZSBjdXJyZW50IGZyYW1lLCB0aGUgc2FtZSB3YXkgdGhlIGtlcm5lbCByZWFkcyB0aGVtLCBhbmQKc2V0cyB0aGUgcHJlc2V0J3Mga25vYnMgcmVsYXRpdmUgdG8gaXQ6CgotIGhhemUgYW1vdW50LCBzbyB0aGUgbWVkaWFuIHRlcnJhaW4gcGl4ZWwgZ2V0cyB0aGUgZGVtbydzIGFtb3VudCBvZiBoYXplOwotIGZvZyB0b3AgYW5kIHNvZnRuZXNzLCBhdCB0aGUgc2FtZSBwbGFjZSBpbiB0aGUgc2hvdCdzIHRlcnJhaW4gYWx0aXR1ZGVzOwotIG5vaXNlIHNpemUsIHdpbmQsIHNoYWRvdyBhbmQgbWF0Y2ggZGlzdGFuY2VzLCBzY2FsZWQgd2l0aCB0aGUgc2NlbmUncyBkaXN0YW5jZXM7Ci0gc2t5IGRlcHRoLCB3aGVuIGEgZmFyIGJhY2tkcm9wIChhIGRvbWUgb3IgY2FyZCkgc3RhbmRzIGFwYXJ0IGZyb20gdGhlIHRlcnJhaW4uCgpUaGlzIGlzIGhvdyBwcmVzZXRzIGFyZSBhcHBsaWVkOiBwaWNraW5nIG9uZSBpbiB0aGUgbWVudSwgb3IgcHJlc3NpbmcgYXBwbHksIGZpdHMgaXQgdG8gdGhlCnNob3QgKG9yIGFwcGxpZXMgaXQgYXMgdHVuZWQgd2hlbiB0aGVyZSBpcyBubyBkZXB0aCBvciBjYW1lcmEgeWV0KSwgc2hvd3MgYSBzaG9ydCBzdW1tYXJ5LAphbmQgb2ZmZXJzIHRvIG1vdmUgdGhlIEV6QXRtb3NTY2F0dGVyIHN1biB0byB3aGVyZSB0aGUgbG9vayB3YW50cyBpdC4gYnVpbGRfZ2l6bW8ucHkgZW1iZWRzCnRoaXMgZmlsZSBpbiB0aGUgZ2l6bW8sIHdpdGggUFJFU0VUUyBhbmQgUkVGRVJFTkNFIGZpbGxlZCBpbiwgc28gTnVrZSBuZWVkcyBubyBQeXRob24gbW9kdWxlCmF0IHJ1biB0aW1lLiBJdCBvbmx5IHNldHMga25vYnMgd2hlbiBydW4sIHNvIHJlbmRlcnMgb24gdGhlIGZhcm0gc2VlIHBsYWluIHZhbHVlcy4KIiIiCmltcG9ydCBtYXRoCmltcG9ydCBudWtlCgpQUkVTRVRTID0geydDbGVhciBEYXknOiB7J2tub2JzJzogeydoYXplX21vZGUnOiAxLCAnaGF6ZV9hbW91bnQnOiAxLjIsICdtYXRjaF9ob3Jpem9uJzogVHJ1ZSwgJ2hhemVfdGludCc6IFsxLjAsIDEuMCwgMS4wXSwgJ2ZvZ19kZW5zaXR5JzogMC4wLCAnbm9pc2VfYW1vdW50JzogMC4yLCAnbm9pc2Vfc2l6ZSc6IDQwMDAuMCwgJ25vaXNlX3N0cmV0Y2gnOiAzLjAsICdzdW5fc2NhdHRlcic6IDEuMCwgJ3NreV9zY2F0dGVyJzogMS4wLCAnc2hhZG93X3N0cmVuZ3RoJzogMS4wLCAnc2hhZG93X2ZpbGwnOiBbMC4wLCAwLjAsIDAuMF19LCAnZm9nX2JlbG93X2NhbWVyYSc6IE5vbmUsICdzdWdnZXN0ZWRfc3VuJzogJ2hpZ2gsIDMwLTQ1IGRlZ3JlZXMsIGZyb20gdGhlIHNpZGU7IHdoaXRlLCBmdWxsIHN0cmVuZ3RoJywgJ3N1bic6IHsnZWxldmF0aW9uJzogMzUuMCwgJ2F6aW11dGgnOiA2MC4wLCAnY29sb3InOiBbMS4wLCAxLjAsIDEuMF19fSwgJ0dvbGRlbiBIb3VyJzogeydrbm9icyc6IHsnaGF6ZV9tb2RlJzogMSwgJ2hhemVfYW1vdW50JzogMi4wLCAnbWF0Y2hfaG9yaXpvbic6IFRydWUsICdoYXplX3RpbnQnOiBbMS4wLCAxLjAsIDEuMF0sICdmb2dfZGVuc2l0eSc6IDEuMCwgJ2ZvZ19zb2Z0bmVzcyc6IDYwMC4wLCAnbm9pc2VfYW1vdW50JzogMC44LCAnbm9pc2Vfc2l6ZSc6IDMwMDAuMCwgJ25vaXNlX3N0cmV0Y2gnOiAzLjAsICdzdW5fc2NhdHRlcic6IDEuNCwgJ3NreV9zY2F0dGVyJzogMS4wLCAnc2hhZG93X3N0cmVuZ3RoJzogMS4wLCAnc2hhZG93X2ZpbGwnOiBbMC4wLCAwLjAsIDAuMF19LCAnZm9nX2JlbG93X2NhbWVyYSc6IDI1MDAuMCwgJ3N1Z2dlc3RlZF9zdW4nOiAnbG93LCAyLTYgZGVncmVlcywgaW4gZnJvbnQgb2YgdGhlIGNhbWVyYTsgd2FybScsICdzdW4nOiB7J2VsZXZhdGlvbic6IDQuMCwgJ2F6aW11dGgnOiAtMTUuMCwgJ2NvbG9yJzogWzEuMCwgMC43MiwgMC41XX19LCAnVmFsbGV5IEZvZyc6IHsna25vYnMnOiB7J2hhemVfbW9kZSc6IDEsICdoYXplX2Ftb3VudCc6IDAuOCwgJ21hdGNoX2hvcml6b24nOiBUcnVlLCAnaGF6ZV90aW50JzogWzAuOTUsIDAuOTgsIDEuMF0sICdmb2dfZGVuc2l0eSc6IDQuMCwgJ2ZvZ19zb2Z0bmVzcyc6IDMwMC4wLCAnbm9pc2VfYW1vdW50JzogMC41LCAnbm9pc2Vfc2l6ZSc6IDE1MDAuMCwgJ25vaXNlX3N0cmV0Y2gnOiA2LjAsICdzdW5fc2NhdHRlcic6IDEuMiwgJ3NreV9zY2F0dGVyJzogMS4xLCAnc2hhZG93X3N0cmVuZ3RoJzogMS4wLCAnc2hhZG93X2ZpbGwnOiBbMC4wLCAwLjAsIDAuMF19LCAnZm9nX2JlbG93X2NhbWVyYSc6IDIzMDAuMCwgJ3N1Z2dlc3RlZF9zdW4nOiAnbG93IG1vcm5pbmcgc3VuLCA4LTE1IGRlZ3JlZXM7IHNsaWdodGx5IHdhcm0nLCAnc3VuJzogeydlbGV2YXRpb24nOiAxMC4wLCAnYXppbXV0aCc6IC0zMC4wLCAnY29sb3InOiBbMS4wLCAwLjkyLCAwLjg1XX19LCAnU21va2UgSGF6ZSc6IHsna25vYnMnOiB7J2hhemVfbW9kZSc6IDEsICdoYXplX2Ftb3VudCc6IDguMCwgJ21hdGNoX2hvcml6b24nOiBGYWxzZSwgJ2hhemVfdGludCc6IFswLjksIDAuNjgsIDAuNDhdLCAnZm9nX2RlbnNpdHknOiAwLjYsICdmb2dfc29mdG5lc3MnOiAxNTAwLjAsICdub2lzZV9hbW91bnQnOiAwLjYsICdub2lzZV9zaXplJzogNDAwMC4wLCAnbm9pc2Vfc3RyZXRjaCc6IDIuMCwgJ3N1bl9zY2F0dGVyJzogMC4zNSwgJ3NreV9zY2F0dGVyJzogMS4wLCAnc2hhZG93X3N0cmVuZ3RoJzogMC43LCAnc2hhZG93X2ZpbGwnOiBbMC4wLCAwLjAsIDAuMF19LCAnZm9nX2JlbG93X2NhbWVyYSc6IDEwMDAuMCwgJ3N1Z2dlc3RlZF9zdW4nOiAnYW55OyBhIGRpbW1lZCwgcmVkZGVuZWQgc3VuIHJlYWRzIGJlc3QnLCAnc3VuJzogeydlbGV2YXRpb24nOiA4LjAsICdhemltdXRoJzogLTIwLjAsICdjb2xvcic6IFsxLjAsIDAuNzIsIDAuNV19fSwgJ092ZXJjYXN0IE1pc3QnOiB7J2tub2JzJzogeydoYXplX21vZGUnOiAxLCAnaGF6ZV9hbW91bnQnOiA0LjAsICdtYXRjaF9ob3Jpem9uJzogRmFsc2UsICdoYXplX3RpbnQnOiBbMC44NSwgMC45LCAxLjBdLCAnZm9nX2RlbnNpdHknOiAyLjAsICdmb2dfc29mdG5lc3MnOiA4MDAuMCwgJ25vaXNlX2Ftb3VudCc6IDAuOSwgJ25vaXNlX3NpemUnOiAxMjAwLjAsICdub2lzZV9zdHJldGNoJzogNC4wLCAnc3VuX3NjYXR0ZXInOiAwLjIsICdza3lfc2NhdHRlcic6IDEuNiwgJ3NoYWRvd19zdHJlbmd0aCc6IDAuMCwgJ3NoYWRvd19maWxsJzogWzAuMCwgMC4wLCAwLjBdfSwgJ2ZvZ19iZWxvd19jYW1lcmEnOiAyMDAwLjAsICdzdWdnZXN0ZWRfc3VuJzogJ2FueTsgaXQgaGFyZGx5IHNob3dzJywgJ3N1bic6IE5vbmV9fQojIFRoZSBkZW1vJ3MgbWVhc3VyZW1lbnRzIChtZWFzdXJlKCkgb24gdGhlIGRlbW8gc2NlbmUpOyBzZWUgcHl0aG9uL2J1aWxkX2dpem1vLnB5LgpSRUZFUkVOQ0UgPSB7J2Rpc3QnOiBbNjQ5Ni41LCAxMDE3My4zLCAzODk1My41XSwgJ2FsdCc6IFsxNjM0LjksIDE4MzQuMywgMTk4NS4yLCAyMTE5LjEsIDIyMzYuNSwgMjM2My44LCAyNDIxLjMsIDI1NDYuMCwgMjY2OS43LCAyODE0LjYsIDMxMTEuNF0sICd0YXUnOiAwLjE3MzAzMSwgJ2NhbWVyYSc6IDQzMDAuMCwgJ3NreV9kaXN0YW5jZSc6IDI1MC4wfQojIFdoYXQgdGhlIGxhc3QgZml0IG1lYXN1cmVkLCBmb3IgZWFzeSBtb2RlLgpMQVNUX0ZJVCA9IHt9CgoKZGVmIF9wY3QodmFsdWVzLCBwKToKICAgIHYgPSBzb3J0ZWQodmFsdWVzKQogICAgaWYgbm90IHY6CiAgICAgICAgcmV0dXJuIDAuMAogICAgeCA9IHAgLyAxMDAuMCAqIChsZW4odikgLSAxKQogICAgaSA9IGludCh4KQogICAgaiA9IG1pbihpICsgMSwgbGVuKHYpIC0gMSkKICAgIHJldHVybiB2W2ldICsgKHZbal0gLSB2W2ldKSAqICh4IC0gaSkKCgpkZWYgX2VmZmVjdGl2ZShuLCBuYW1lLCBmYWxsYmFjayk6CiAgICAiIiJBIGhhemUgc2V0dGluZyBhcyB0aGUga2VybmVsIHNlZXMgaXQ6IGZyb20gdGhlIGF0bW9zIGlucHV0IHdoZW4gaW5oZXJpdGluZy4iIiIKICAgIGF0bW9zID0gbi5pbnB1dCgyKQogICAgaWYgblsiaW5oZXJpdF9hdG1vcyJdLnZhbHVlKCkgYW5kIGF0bW9zIGlzIG5vdCBOb25lIGFuZCBhdG1vcy5rbm9iKG5hbWUpOgogICAgICAgIHJldHVybiBhdG1vc1tuYW1lXQogICAgcmV0dXJuIG5bZmFsbGJhY2tdCgoKZGVmIF9oZWlnaHRfcGF0aChjLCBkLCBoKToKICAgICIiIktlcm5lbCBoZWlnaHRQYXRoKGMsIDAsIGQpOiBoYXplIGFsb25nIGEgcmF5IGNsaW1iaW5nIGMgcGVyIG1ldHJlLCByZWxhdGl2ZSB0byBjYW1lcmEgaGVpZ2h0LiIiIgogICAgaWYgYWJzKGMpICogZCAvIGggPCAxZS00OgogICAgICAgIHJldHVybiBkCiAgICByZXR1cm4gaCAvIGMgKiAoMS4wIC0gbWF0aC5leHAoLWMgKiBkIC8gaCkpCgoKZGVmIG1lYXN1cmUobiwgZ3JpZD0oNDgsIDI3KSk6CiAgICAiIiJEaXN0YW5jZXMsIGFsdGl0dWRlcyBhbmQgaGF6ZSBvZiB0aGUgc2hvdCdzIHRlcnJhaW4sIHNhbXBsZWQgb24gYSBncmlkLiIiIgogICAgcGxhdGUgPSBuLmlucHV0KDApCiAgICBjYW0gPSBuLmlucHV0KDEpCiAgICBpZiBwbGF0ZSBpcyBOb25lOgogICAgICAgIHJhaXNlIFZhbHVlRXJyb3IoImNvbm5lY3QgYSBwbGF0ZSB3aXRoIGRlcHRoIGZpcnN0IikKICAgIGxhdGxvbmcgPSBuWyJwbGF0ZV90eXBlIl0uZ2V0VmFsdWUoKSA9PSAxCiAgICBpZiBub3QgbGF0bG9uZyBhbmQgKGNhbSBpcyBOb25lIG9yIG5vdCBjYW0ua25vYigid29ybGRfbWF0cml4IikpOgogICAgICAgIHJhaXNlIFZhbHVlRXJyb3IoImNvbm5lY3QgdGhlIGNhbWVyYSBmaXJzdCIpCiAgICBzY2FsZSA9IG5bImRlcHRoX3NjYWxlIl0udmFsdWUoKQogICAgZHR5cGUgPSBpbnQoblsiZGVwdGhfdHlwZSJdLmdldFZhbHVlKCkpCiAgICBjaGFuID0gblsiZGVwdGhfY2hhbm5lbCJdLnZhbHVlKCkKICAgIGlmIGxhdGxvbmc6CiAgICAgICAgb3JpZ2luID0gWzAuMCwgblsibGF0bG9uZ19jYW1lcmFfaGVpZ2h0Il0udmFsdWUoKSwgMC4wXQogICAgZWxzZToKICAgICAgICBtID0gY2FtWyJ3b3JsZF9tYXRyaXgiXQogICAgICAgIHJvd3MgPSBbW20uZ2V0VmFsdWUociAqIDQgKyBjKSBmb3IgYyBpbiByYW5nZSgzKV0gZm9yIHIgaW4gcmFuZ2UoMyldCiAgICAgICAgb3JpZ2luID0gW20uZ2V0VmFsdWUoMyArIDQgKiBpKSAqIHNjYWxlIGZvciBpIGluIHJhbmdlKDMpXQogICAgICAgIGhhcCwgdmFwLCBmb2NhbCA9IGNhbVsiaGFwZXJ0dXJlIl0udmFsdWUoKSwgY2FtWyJ2YXBlcnR1cmUiXS52YWx1ZSgpLCBjYW1bImZvY2FsIl0udmFsdWUoKQogICAgc2lnbWEgPSBfZWZmZWN0aXZlKG4sICJoYXplX2RlbnNpdHkiLCAiaGF6ZV9kZW5zaXR5IikuZ2V0VmFsdWUoMSkKICAgIGggPSBfZWZmZWN0aXZlKG4sICJoYXplX2hlaWdodCIsICJoYXplX2hlaWdodCIpLnZhbHVlKCkgKiAxMDAwLjAKCiAgICB3LCBoZ3QgPSBwbGF0ZS53aWR0aCgpLCBwbGF0ZS5oZWlnaHQoKQogICAgcmF3X2FsbCwgc2FtcGxlcyA9IFtdLCBbXQogICAgZm9yIGogaW4gcmFuZ2UoZ3JpZFsxXSk6CiAgICAgICAgZm9yIGkgaW4gcmFuZ2UoZ3JpZFswXSk6CiAgICAgICAgICAgIHUsIHYgPSAoaSArIDAuNSkgLyBncmlkWzBdLCAoaiArIDAuNSkgLyBncmlkWzFdCiAgICAgICAgICAgIHJhdyA9IHBsYXRlLnNhbXBsZShjaGFuLCBwbGF0ZS5iYm94KCkueCgpICsgdSAqIHcsIHBsYXRlLmJib3goKS55KCkgKyB2ICogaGd0KQogICAgICAgICAgICBpZiBsYXRsb25nOgogICAgICAgICAgICAgICAgbG9uLCBsYXQgPSAodSAtIDAuNSkgKiAyICogbWF0aC5waSwgKHYgLSAwLjUpICogbWF0aC5waQogICAgICAgICAgICAgICAgZCA9IFttYXRoLnNpbihsb24pICogbWF0aC5jb3MobGF0KSwgbWF0aC5zaW4obGF0KSwgLW1hdGguY29zKGxvbikgKiBtYXRoLmNvcyhsYXQpXQogICAgICAgICAgICAgICAgcGxhbmFyID0gMS4wCiAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICBjZCA9IFsodSAtIDAuNSkgKiBoYXAgLyBmb2NhbCwgKHYgLSAwLjUpICogdmFwIC8gZm9jYWwsIC0xLjBdCiAgICAgICAgICAgICAgICBwbGFuYXIgPSBtYXRoLnNxcnQoc3VtKHggKiB4IGZvciB4IGluIGNkKSkKICAgICAgICAgICAgICAgIGQgPSBbc3VtKHJvd3Nbcl1ba10gKiBjZFtrXSBmb3IgayBpbiByYW5nZSgzKSkgZm9yIHIgaW4gcmFuZ2UoMyldCiAgICAgICAgICAgICAgICBsbiA9IG1hdGguc3FydChzdW0oeCAqIHggZm9yIHggaW4gZCkpCiAgICAgICAgICAgICAgICBkID0gW3ggLyBsbiBmb3IgeCBpbiBkXQogICAgICAgICAgICBpZiByYXcgPD0gMDoKICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgIGRpc3QgPSByYXcgaWYgZHR5cGUgPT0gMCBlbHNlIHJhdyAqIHBsYW5hciBpZiBkdHlwZSA9PSAxIGVsc2UgcGxhbmFyIC8gcmF3CiAgICAgICAgICAgIHJhd19hbGwuYXBwZW5kKHJhdykKICAgICAgICAgICAgc2FtcGxlcy5hcHBlbmQoKHJhdywgZGlzdCAqIHNjYWxlLCBkKSkKICAgIHJldHVybiB7Im9yaWdpbiI6IG9yaWdpbiwgInNpZ21hIjogc2lnbWEsICJoZWlnaHQiOiBoLCAicmF3IjogcmF3X2FsbCwgInNhbXBsZXMiOiBzYW1wbGVzLAogICAgICAgICAgICAicGl4ZWxzIjogZ3JpZFswXSAqIGdyaWRbMV0sICJkZXB0aF90eXBlIjogZHR5cGV9CgoKZGVmIGZpbmRfYmFja2Ryb3AocmF3LCB0aHJlc2hvbGQpOgogICAgIiIiQSByYXcgc2t5IGRlcHRoIHRoYXQgc3BsaXRzIG9mZiBhIGZhciBiYWNrZHJvcCwgb3IgTm9uZS4KCiAgICBMb29rcyBmb3IgdGhlIHdpZGVzdCBnYXAgKGFzIGEgcmF0aW8pIGluIHRoZSBzb3J0ZWQgZGVwdGhzIGJleW9uZCB0aGUgbWVkaWFuOyBhIGJhY2tkcm9wCiAgICBpcyBmYXIgZnVydGhlciB0aGFuIHRoZSB0ZXJyYWluIGluIGZyb250IG9mIGl0LCB3aXRoIG5vdGhpbmcgaW4gYmV0d2Vlbi4iIiIKICAgIHYgPSBzb3J0ZWQoeCBmb3IgeCBpbiByYXcgaWYgeCA8IHRocmVzaG9sZCkKICAgIGlmIGxlbih2KSA8IDIwOgogICAgICAgIHJldHVybiBOb25lCiAgICBiZXN0LCBhdCA9IDEuMCwgTm9uZQogICAgZm9yIGkgaW4gcmFuZ2UobGVuKHYpIC8vIDIsIGxlbih2KSAtIDEpOgogICAgICAgIGlmIHZbaV0gPiAwIGFuZCB2W2kgKyAxXSAvIHZbaV0gPiBiZXN0OgogICAgICAgICAgICBiZXN0LCBhdCA9IHZbaSArIDFdIC8gdltpXSwgaQogICAgaWYgYXQgaXMgTm9uZSBvciBiZXN0IDwgMy4wIG9yIGxlbih2KSAtIDEgLSBhdCA8IDAuMDIgKiBsZW4odik6CiAgICAgICAgcmV0dXJuIE5vbmUKICAgIHJldHVybiBtYXRoLnNxcnQodlthdF0gKiB2W2F0ICsgMV0pCgoKZGVmIF9zdGF0cyhtLCB0aHJlc2hvbGQpOgogICAgbmVhciA9IFtzIGZvciBzIGluIG1bInNhbXBsZXMiXSBpZiBzWzBdIDwgdGhyZXNob2xkXSBpZiBtWyJkZXB0aF90eXBlIl0gIT0gMiBlbHNlIG1bInNhbXBsZXMiXQogICAgaWYgbGVuKG5lYXIpIDwgMTA6CiAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigidG9vIGZldyB0ZXJyYWluIHBpeGVscyB0byBtZWFzdXJlIChpcyB0aGUgZGVwdGggY2hhbm5lbCByaWdodD8pIikKICAgIG8gPSBtWyJvcmlnaW4iXQogICAgZGlzdCA9IFtzWzFdIGZvciBzIGluIG5lYXJdCiAgICBhbHQgPSBbb1sxXSArIHNbMl1bMV0gKiBzWzFdIGZvciBzIGluIG5lYXJdCiAgICB0YXUgPSBbbVsic2lnbWEiXSAqIF9oZWlnaHRfcGF0aChzWzJdWzFdLCBzWzFdLCBtWyJoZWlnaHQiXSkgZm9yIHMgaW4gbmVhcl0KICAgIHJldHVybiB7ImRpc3QiOiBbX3BjdChkaXN0LCBwKSBmb3IgcCBpbiAoMTAsIDUwLCA5MCldLAogICAgICAgICAgICAiYWx0IjogW19wY3QoYWx0LCBwKSBmb3IgcCBpbiByYW5nZSgwLCAxMDEsIDEwKV0sCiAgICAgICAgICAgICJ0YXUiOiBfcGN0KHRhdSwgNTApLCAiY2FtZXJhIjogb1sxXX0KCgpkZWYgX3BsYWNlKHZhbHVlLCByZWZfYWx0cywgYWx0cyk6CiAgICAiIiJUaGUgYWx0aXR1ZGUgYXQgdGhlIHNhbWUgcGxhY2UgaW4gYGFsdHNgIGFzIGB2YWx1ZWAgaXMgaW4gYHJlZl9hbHRzYCAoZGVjaWxlcykuIiIiCiAgICBzcGFuX3JlZiA9IG1heChyZWZfYWx0c1stMV0gLSByZWZfYWx0c1swXSwgMS4wKQogICAgc3BhbiA9IG1heChhbHRzWy0xXSAtIGFsdHNbMF0sIDEuMCkKICAgIGlmIHZhbHVlIDw9IHJlZl9hbHRzWzBdOgogICAgICAgIHJldHVybiBhbHRzWzBdIC0gKHJlZl9hbHRzWzBdIC0gdmFsdWUpIC8gc3Bhbl9yZWYgKiBzcGFuCiAgICBpZiB2YWx1ZSA+PSByZWZfYWx0c1stMV06CiAgICAgICAgcmV0dXJuIGFsdHNbLTFdICsgKHZhbHVlIC0gcmVmX2FsdHNbLTFdKSAvIHNwYW5fcmVmICogc3BhbgogICAgZm9yIGkgaW4gcmFuZ2UobGVuKHJlZl9hbHRzKSAtIDEpOgogICAgICAgIGEsIGIgPSByZWZfYWx0c1tpXSwgcmVmX2FsdHNbaSArIDFdCiAgICAgICAgaWYgYSA8PSB2YWx1ZSA8PSBiOgogICAgICAgICAgICBmID0gKHZhbHVlIC0gYSkgLyAoYiAtIGEpIGlmIGIgPiBhIGVsc2UgMC4wCiAgICAgICAgICAgIHJldHVybiBhbHRzW2ldICsgZiAqIChhbHRzW2kgKyAxXSAtIGFsdHNbaV0pCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgX2F0bW9zKG4pOgogICAgIiIiVGhlIEV6QXRtb3NTY2F0dGVyIGluIHRoZSBhdG1vcyBpbnB1dCwgdGhyb3VnaCBhbnkgRG90cyBvciBOb09wcy4iIiIKICAgIGEgPSBuLmlucHV0KDIpCiAgICB3aGlsZSBhIGlzIG5vdCBOb25lIGFuZCBub3QgYS5rbm9iKCJzdW5fZGlyZWN0aW9uIik6CiAgICAgICAgYSA9IGEuaW5wdXQoMCkgaWYgYS5pbnB1dHMoKSBlbHNlIE5vbmUKICAgIHJldHVybiBhCgoKZGVmIHN1bl9zdWdnZXN0aW9uKG4sIHByZXNldCk6CiAgICAiIiJUaGUgcHJlc2V0J3Mgc3VuIHBsYWNlZCByZWxhdGl2ZSB0byB0aGlzIGNhbWVyYSwgd2hlbiB0aGUgY3VycmVudCBzdW4gaXMgZmFyIGZyb20gaXQuCgogICAgUmV0dXJucyAocXVlc3Rpb24sIGRpcmVjdGlvbiwgY29sb3VyKSBvciBOb25lLiIiIgogICAgd2FudCA9IHByZXNldC5nZXQoInN1biIpCiAgICBhdG1vcyA9IF9hdG1vcyhuKQogICAgY2FtID0gbi5pbnB1dCgxKQogICAgaWYgbm90IHdhbnQgb3IgYXRtb3MgaXMgTm9uZSBvciBjYW0gaXMgTm9uZSBvciBub3QgY2FtLmtub2IoIndvcmxkX21hdHJpeCIpIG9yIG5bInBsYXRlX3R5cGUiXS5nZXRWYWx1ZSgpID09IDE6CiAgICAgICAgcmV0dXJuIE5vbmUKICAgIHdtID0gY2FtWyJ3b3JsZF9tYXRyaXgiXQogICAgeWF3ID0gbWF0aC5hdGFuMigtd20uZ2V0VmFsdWUoMiksIHdtLmdldFZhbHVlKDEwKSkKICAgIHN1biA9IGxpc3QoYXRtb3NbInN1bl9kaXJlY3Rpb24iXS52YWx1ZSgpKQogICAgaWYgYXRtb3Mua25vYigic3VuX2Zyb20iKSBhbmQgYXRtb3NbInN1bl9mcm9tIl0udmFsdWUoKSA9PSAiQXV0byAoSERSSSkiOgogICAgICAgIHdpdGggYXRtb3M6CiAgICAgICAgICAgIGxpZ2h0ID0gbnVrZS50b05vZGUoIkxpZ2h0IikKICAgICAgICAgICAgaWYgbGlnaHQgaXMgbm90IE5vbmU6CiAgICAgICAgICAgICAgICBzdW4gPSBbbGlnaHQuc2FtcGxlKGMsIDAuNSwgMC41KSBmb3IgYyBpbiAoInJlZCIsICJncmVlbiIsICJibHVlIildCiAgICBsbiA9IG1hdGguc3FydChzdW0oeCAqIHggZm9yIHggaW4gc3VuKSkgb3IgMS4wCiAgICBzdW4gPSBbeCAvIGxuIGZvciB4IGluIHN1bl0KICAgIGF6ID0gbWF0aC5kZWdyZWVzKG1hdGguYXRhbjIoc3VuWzBdLCAtc3VuWzJdKSAtIHlhdykKICAgIGF6ID0gKGF6ICsgMTgwLjApICUgMzYwLjAgLSAxODAuMAogICAgZWxldiA9IG1hdGguZGVncmVlcyhtYXRoLmFzaW4obWF4KC0xLjAsIG1pbigxLjAsIHN1blsxXSkpKSkKICAgIGlmIGFicyhheiAtIHdhbnRbImF6aW11dGgiXSkgPCAyNS4wIGFuZCBhYnMoZWxldiAtIHdhbnRbImVsZXZhdGlvbiJdKSA8IDUuMDoKICAgICAgICByZXR1cm4gTm9uZQogICAgYSA9IHlhdyArIG1hdGgucmFkaWFucyh3YW50WyJhemltdXRoIl0pCiAgICBlID0gbWF0aC5yYWRpYW5zKHdhbnRbImVsZXZhdGlvbiJdKQogICAgZGlyZWN0aW9uID0gW3JvdW5kKG1hdGguc2luKGEpICogbWF0aC5jb3MoZSksIDQpLCByb3VuZChtYXRoLnNpbihlKSwgNCksIHJvdW5kKC1tYXRoLmNvcyhhKSAqIG1hdGguY29zKGUpLCA0KV0KICAgIHNpZGUgPSAibGVmdCIgaWYgd2FudFsiYXppbXV0aCJdIDwgMCBlbHNlICJyaWdodCIKICAgIHF1ZXN0aW9uID0gKCJUaGUgc3VuIGlzICUuMGYgZGVnIHVwIGFuZCAlLjBmIGRlZyAlcyBvZiB0aGUgdmlldy4gVGhpcyBsb29rIHdhbnRzIGl0ICUuMGYgZGVnIHVwLCAlLjBmIGRlZyAlcy5cblxuIgogICAgICAgICAgICAgICAgIlNldCAlcydzIHN1biB0byB0aGF0JXM/IgogICAgICAgICAgICAgICAgJSAoZWxldiwgYWJzKGF6KSwgInJpZ2h0IiBpZiBheiA+IDAgZWxzZSAibGVmdCIsIHdhbnRbImVsZXZhdGlvbiJdLCBhYnMod2FudFsiYXppbXV0aCJdKSwgc2lkZSwKICAgICAgICAgICAgICAgICAgIGF0bW9zLm5hbWUoKSwgIiAodGhpcyBzd2l0Y2hlcyAnc3VuIGZyb20nIHRvIE1hbnVhbCkiIGlmIGF0bW9zWyJzdW5fZnJvbSJdLnZhbHVlKCkgIT0gIk1hbnVhbCIgZWxzZSAiIikpCiAgICByZXR1cm4gcXVlc3Rpb24sIGRpcmVjdGlvbiwgd2FudFsiY29sb3IiXQoKCmRlZiBfcGxhaW4obiwgcHJlc2V0KToKICAgICIiIlRoZSBwcmVzZXQgYXMgdHVuZWQsIGZvciB3aGVuIHRoZXJlIGlzIG5vIGRlcHRoIG9yIGNhbWVyYSB0byBmaXQgaXQgdG8uIiIiCiAgICBmb3IgaywgdiBpbiBwcmVzZXRbImtub2JzIl0uaXRlbXMoKToKICAgICAgICBuW2tdLnNldFZhbHVlKHYpCiAgICBpZiBwcmVzZXRbImZvZ19iZWxvd19jYW1lcmEiXSBpcyBub3QgTm9uZToKICAgICAgICBjYW0gPSBuLmlucHV0KDEpCiAgICAgICAgaWYgblsicGxhdGVfdHlwZSJdLmdldFZhbHVlKCkgPT0gMCBhbmQgY2FtIGlzIG5vdCBOb25lIGFuZCBjYW0ua25vYigid29ybGRfbWF0cml4Iik6CiAgICAgICAgICAgIGhlaWdodCA9IGNhbVsid29ybGRfbWF0cml4Il0uZ2V0VmFsdWUoNykgKiBuWyJkZXB0aF9zY2FsZSJdLmdldFZhbHVlKCkKICAgICAgICBlbHNlOgogICAgICAgICAgICBoZWlnaHQgPSBuWyJsYXRsb25nX2NhbWVyYV9oZWlnaHQiXS5nZXRWYWx1ZSgpCiAgICAgICAgblsiZm9nX3RvcCJdLnNldFZhbHVlKGhlaWdodCAtIHByZXNldFsiZm9nX2JlbG93X2NhbWVyYSJdKQoKCmRlZiBmaXQobiwgbmFtZT1Ob25lKToKICAgICIiIkFwcGx5IHRoZSBwcmVzZXQgcGlja2VkIG9uIGBuYCAob3IgYG5hbWVgKSwgZml0dGVkIHRvIHRoZSBzaG90LiBSZXR1cm5zIGEgc2hvcnQgc3VtbWFyeS4iIiIKICAgIG5hbWUgPSBuYW1lIG9yIG5bInByZXNldCJdLnZhbHVlKCkKICAgIHByZXNldCA9IFBSRVNFVFNbbmFtZV0KICAgIHJlZiA9IFJFRkVSRU5DRQogICAgbSA9IG1lYXN1cmUobikKCiAgICB0aHJlc2hvbGQgPSBuWyJza3lfdGhyZXNob2xkIl0udmFsdWUoKQogICAgYmFja2Ryb3AgPSBOb25lCiAgICBpZiBtWyJkZXB0aF90eXBlIl0gIT0gMjoKICAgICAgICBiYWNrZHJvcCA9IGZpbmRfYmFja2Ryb3AobVsicmF3Il0sIHRocmVzaG9sZCkKICAgICAgICBpZiBiYWNrZHJvcCBpcyBub3QgTm9uZToKICAgICAgICAgICAgdGhyZXNob2xkID0gYmFja2Ryb3AKICAgICAgICAgICAgblsic2t5X3RocmVzaG9sZCJdLnNldFZhbHVlKHJvdW5kKGJhY2tkcm9wLCAzKSkKICAgIHN0ID0gX3N0YXRzKG0sIHRocmVzaG9sZCkKCiAgICBzY2FsZSA9IHN0WyJkaXN0Il1bMV0gLyByZWZbImRpc3QiXVsxXQogICAgIyBFYXN5IG1vZGUgbW92ZXMgdGhlIGZvZyBoZWlnaHQgaW4gc3RlcHMgb2YgdGhlIHRlcnJhaW4ncyBhbHRpdHVkZSByYW5nZS4KICAgIExBU1RfRklUWyJyZWxpZWYiXSA9IG1heChzdFsiYWx0Il1bOV0gLSBzdFsiYWx0Il1bMV0sIDEuMCkKICAgIHJlbGllZiA9IG1heChzdFsiYWx0Il1bOV0gLSBzdFsiYWx0Il1bMV0sIDEuMCkgLyBtYXgocmVmWyJhbHQiXVs5XSAtIHJlZlsiYWx0Il1bMV0sIDEuMCkKICAgIGtub2JzID0gZGljdChwcmVzZXRbImtub2JzIl0pCiAgICBrbm9ic1siaGF6ZV9hbW91bnQiXSA9IHByZXNldFsia25vYnMiXVsiaGF6ZV9hbW91bnQiXSAqIHJlZlsidGF1Il0gLyBtYXgoc3RbInRhdSJdLCAxZS0xMikKICAgIGlmIGtub2JzLmdldCgiZm9nX2RlbnNpdHkiKToKICAgICAgICBrbm9ic1siZm9nX2RlbnNpdHkiXSA9IHByZXNldFsia25vYnMiXVsiZm9nX2RlbnNpdHkiXSAvIHNjYWxlCiAgICBpZiAiZm9nX3NvZnRuZXNzIiBpbiBrbm9iczoKICAgICAgICBrbm9ic1siZm9nX3NvZnRuZXNzIl0gPSBwcmVzZXRbImtub2JzIl1bImZvZ19zb2Z0bmVzcyJdICogcmVsaWVmCiAgICBmb3IgayBpbiAoIm5vaXNlX3NpemUiLCk6CiAgICAgICAgaWYgayBpbiBrbm9iczoKICAgICAgICAgICAga25vYnNba10gPSBwcmVzZXRbImtub2JzIl1ba10gKiBzY2FsZQogICAgZm9yIGsgaW4ga25vYnM6CiAgICAgICAgbltrXS5zZXRWYWx1ZShrbm9ic1trXSkKICAgIGlmIHByZXNldFsiZm9nX2JlbG93X2NhbWVyYSJdIGlzIG5vdCBOb25lOgogICAgICAgIGZvZ190b3AgPSBfcGxhY2UocmVmWyJjYW1lcmEiXSAtIHByZXNldFsiZm9nX2JlbG93X2NhbWVyYSJdLCByZWZbImFsdCJdLCBzdFsiYWx0Il0pCiAgICAgICAgblsiZm9nX3RvcCJdLnNldFZhbHVlKHJvdW5kKGZvZ190b3AsIDEpKQogICAgd2luZCA9IG5bIm5vaXNlX3dpbmQiXS52YWx1ZSgpCiAgICBzcGVlZCA9IG1hdGguc3FydChzdW0oeCAqIHggZm9yIHggaW4gd2luZCkpIG9yIDEuMAogICAgblsibm9pc2Vfd2luZCJdLnNldFZhbHVlKFt4IC8gc3BlZWQgKiA1LjAgKiBzY2FsZSBmb3IgeCBpbiB3aW5kXSBpZiBhbnkod2luZCkgZWxzZSBbNS4wICogc2NhbGUsIDAuMCwgMC4wXSkKICAgIG5bInNoYWRvd19kaXN0YW5jZSJdLnNldFZhbHVlKHJvdW5kKDIwLjAgKiBzY2FsZSwgMykpCiAgICBuWyJtYXRjaF9kaXN0YW5jZSJdLnNldFZhbHVlKHJvdW5kKDIwLjAgKiBzY2FsZSwgMykpCiAgICAjIFNreSBwaXhlbHMgaGF6ZWQgYXMgaWYgdGhpcyBmYXIgYXdheSAoSGF6ZSBTa3kpIHRha2UgdGhlIHNhbWUgc2NhbGUsIG9yIHRoZXkgZ2V0IHRoZQogICAgIyBmaXR0ZWQgaGF6ZSBhbW91bnQgb3ZlciB0aGUgZGVtbydzIGZ1bGwgZGlzdGFuY2UuCiAgICBuWyJza3lfZGlzdGFuY2UiXS5zZXRWYWx1ZShyb3VuZChSRUZFUkVOQ0UuZ2V0KCJza3lfZGlzdGFuY2UiLCAyNTAuMCkgKiBzY2FsZSwgMykpCgogICAgbGluZXMgPSBbIiVzLCBmaXR0ZWQgdG8gdGhpcyBzaG90LiIgJSBuYW1lLAogICAgICAgICAgICAgIlRlcnJhaW4gJS4xZi0lLjFmIGttIGF3YXksICUuMmd4IHRoZSBkZW1vJ3MgZGlzdGFuY2VzLiIgJSAoc3RbImRpc3QiXVswXSAvIDEwMDAuMCwgc3RbImRpc3QiXVsyXSAvIDEwMDAuMCwgc2NhbGUpLAogICAgICAgICAgICAgIkhhemUgYW1vdW50ICUuM2csIGZvZyB0b3AgJS4wZiBtLiIgJSAoblsiaGF6ZV9hbW91bnQiXS52YWx1ZSgpLCBuWyJmb2dfdG9wIl0udmFsdWUoKSldCiAgICBpZiBiYWNrZHJvcCBpcyBub3QgTm9uZToKICAgICAgICBsaW5lcy5hcHBlbmQoIkEgZmFyIGJhY2tkcm9wIG5vdyBjb3VudHMgYXMgc2t5LiIpCiAgICByZXR1cm4gIlxuIi5qb2luKGxpbmVzKQoKCmRlZiBhcHBseV9wcmVzZXQobik6CiAgICAiIiJBcHBseSB0aGUgcGlja2VkIHByZXNldCwgZml0dGVkIHRvIHRoZSBzaG90IHdoZW4gaXQgY2FuIGJlIG1lYXN1cmVkLCB0aGVuIHJlcG9ydCBpdAogICAgYW5kIG9mZmVyIHRoZSBwcmVzZXQncyBzdW4uIFVzZWQgYnkgdGhlIGFwcGx5IGJ1dHRvbiBhbmQgd2hlbiBhIHByZXNldCBpcyBwaWNrZWQuIiIiCiAgICBwcmVzZXQgPSBQUkVTRVRTW25bInByZXNldCJdLnZhbHVlKCldCiAgICB0cnk6CiAgICAgICAgc3VtbWFyeSA9IGZpdChuKQogICAgZXhjZXB0IFZhbHVlRXJyb3IgYXMgZToKICAgICAgICBfcGxhaW4obiwgcHJlc2V0KQogICAgICAgIHN1bW1hcnkgPSAiJXMsIGFzIHR1bmVkIG9uIHRoZSBkZW1vICglcyB0byBmaXQgaXQgdG8gdGhpcyBzaG90KS4iICUgKG5bInByZXNldCJdLnZhbHVlKCksIGUpCiAgICBvZmZlciA9IHN1bl9zdWdnZXN0aW9uKG4sIHByZXNldCkKICAgIGlmIG5vdCBudWtlLkdVSToKICAgICAgICBwcmludChzdW1tYXJ5KQogICAgICAgIHJldHVybiBzdW1tYXJ5CiAgICBpZiBvZmZlciBpcyBOb25lOgogICAgICAgIG51a2UubWVzc2FnZShzdW1tYXJ5KQogICAgICAgIHJldHVybiBzdW1tYXJ5CiAgICBxdWVzdGlvbiwgZGlyZWN0aW9uLCBjb2xvdXIgPSBvZmZlcgogICAgaWYgbnVrZS5hc2soc3VtbWFyeSArICJcblxuIiArIHF1ZXN0aW9uKToKICAgICAgICBhdG1vcyA9IF9hdG1vcyhuKQogICAgICAgIGF0bW9zWyJzdW5fZnJvbSJdLnNldFZhbHVlKCJNYW51YWwiKQogICAgICAgIGF0bW9zWyJzdW5fZGlyZWN0aW9uIl0uc2V0VmFsdWUoZGlyZWN0aW9uKQogICAgICAgIGlmIGF0bW9zLmtub2IoInN1bl9jb2xvciIpOgogICAgICAgICAgICBhdG1vc1sic3VuX2NvbG9yIl0uc2V0VmFsdWUoY29sb3VyKQogICAgcmV0dXJuIHN1bW1hcnkKCgpkZWYgcmVmZXJlbmNlKG4pOgogICAgIiIiVGhlIG1lYXN1cmVtZW50cyBzdG9yZWQgYXMgUkVGRVJFTkNFLCB0YWtlbiBvbiB0aGUgZGVtbyBzY2VuZSdzIG5vZGUuIiIiCiAgICBtID0gbWVhc3VyZShuKQogICAgc3QgPSBfc3RhdHMobSwgblsic2t5X3RocmVzaG9sZCJdLnZhbHVlKCkpCiAgICByZXR1cm4geyJkaXN0Ijogc3RbImRpc3QiXSwgImFsdCI6IHN0WyJhbHQiXSwgInRhdSI6IHN0WyJ0YXUiXSwgImNhbWVyYSI6IHN0WyJjYW1lcmEiXX0KCgoiIiJFYXN5IG1vZGU6IGEgZmV3IGJpZyBzbGlkZXJzIG92ZXIgdGhlIGFkdmFuY2VkIGtub2JzLCBsb29rIHRodW1ibmFpbHMsIGFuZCBzYXZlZCBsb29rcy4KCmJ1aWxkX2dpem1vLnB5IGVtYmVkcyB0aGlzIGZpbGUgYWZ0ZXIgZml0X3RvX3Nob3QucHkgaW4gdGhlIGdpem1vJ3Mga25vYkNoYW5nZWQgYW5kIGJ1dHRvbnMKKG9uZSBzaGFyZWQgbmFtZXNwYWNlKSwgd2l0aCBMT09LX0RJUlMgYW5kIExPT0tfS05PQlMgZmlsbGVkIGluLCBzbyBOdWtlIG5lZWRzIG5vIFB5dGhvbgptb2R1bGUgYXQgcnVuIHRpbWUuCgpUaGUgc2xpZGVycyBhcmUgcmVsYXRpdmUgdG8gYSBiYXNlIGxvb2sga2VwdCBpbiB0aGUgaGlkZGVuIGVhc3lfYmFzZSBrbm9iOiB0aGUgcHJlc2V0IGFzCmZpdHRlZCB0byB0aGUgc2hvdCwgYSBsb2FkZWQgbG9vaywgb3Igd2hhdGV2ZXIgdGhlIGFkdmFuY2VkIGtub2JzIGhlbGQgd2hlbiAnYWR2YW5jZWQnIHdhcwp0dXJuZWQgb2ZmLiBFdmVyeSBzbGlkZXIgY2hhbmdlIHJld3JpdGVzIHRoZSBhZHZhbmNlZCBrbm9icyBmcm9tIHRoZSBiYXNlLCBzbyB0dXJuaW5nCidhZHZhbmNlZCcgb24gc2hvd3MgZXhhY3RseSB3aGF0IEVhc3kgZGlkLCByZWFkeSB0byBmaW5lLXR1bmUuCiIiIgppbXBvcnQganNvbgppbXBvcnQgb3MKaW1wb3J0IHJhbmRvbQppbXBvcnQgdGVtcGZpbGUKCmltcG9ydCBudWtlCgojIEZpbGxlZCBpbiBieSBidWlsZF9naXptby5weSBmcm9tIHB5dGhvbi9lemRlcHRoaGF6ZS5weS4KTE9PS19ESVJTID0geydVc2VyJzogeydlbnYnOiAnRVpIQVpFX1VTRVJfTE9PS1MnLCAncGF0aCc6ICd+Ly5udWtlL2V6ZGVwdGhoYXplX2xvb2tzJ30sICdTdHVkaW8nOiB7J2Vudic6ICdFWkhBWkVfU1RVRElPX0xPT0tTJywgJ3BhdGgnOiAnJ319CkxPT0tfS05PQlMgPSBbJ2ZvZ19kZW5zaXR5JywgJ2ZvZ19zb2Z0bmVzcycsICdmb2dfdG9wJywgJ2hhemVfYW1vdW50JywgJ2hhemVfbW9kZScsICdoYXplX3RpbnQnLCAnbWF0Y2hfZGlzdGFuY2UnLCAnbWF0Y2hfaG9yaXpvbicsICdub2lzZV9hbW91bnQnLCAnbm9pc2Vfc2l6ZScsICdub2lzZV9zdHJldGNoJywgJ25vaXNlX3dpbmQnLCAnc2hhZG93X2Rpc3RhbmNlJywgJ3NoYWRvd19maWxsJywgJ3NoYWRvd19zdHJlbmd0aCcsICdza3lfZGlzdGFuY2UnLCAnc2t5X3NjYXR0ZXInLCAnc2t5X3RocmVzaG9sZCcsICdzdW5fc2NhdHRlciddCgojIEVhc3kgc2xpZGVyOiAoa25vYiwgbmV1dHJhbCB2YWx1ZSwgc3VycHJpc2UgcmFuZ2UpLgpTTElERVJTID0gWygiZWFzeV9oYXplIiwgMS4wLCAoMC42LCAxLjYpKSwgKCJlYXN5X3dhcm10aCIsIDAuMCwgKC0wLjYsIDAuNikpLCAoImVhc3lfZ2xvdyIsIDEuMCwgKDAuNiwgMS44KSksCiAgICAgICAgICAgKCJlYXN5X3NoYWZ0cyIsIDEuMCwgKDAuNSwgMS40KSksICgiZWFzeV9mb2ciLCAxLjAsICgwLjMsIDIuMCkpLCAoImVhc3lfZm9nX2hlaWdodCIsIDAuMCwgKC0wLjUsIDAuNSkpLAogICAgICAgICAgICgiZWFzeV90ZXh0dXJlIiwgMS4wLCAoMC4zLCAyLjApKV0KRUFTWV9LTk9CUyA9IFtuYW1lIGZvciBuYW1lLCBfLCBfIGluIFNMSURFUlNdICsgWyJsb29rX3N0cmVuZ3RoIl0KCgpkZWYgX3ZhbHVlKG4sIG5hbWUpOgogICAgdiA9IG5bbmFtZV0udmFsdWUoKQogICAgcmV0dXJuIGxpc3QodikgaWYgaXNpbnN0YW5jZSh2LCAobGlzdCwgdHVwbGUpKSBlbHNlIHYKCgpkZWYgcmViYXNlKG4sIHJlbGllZj1Ob25lKToKICAgICIiIk1ha2UgdGhlIGFkdmFuY2VkIGtub2JzJyBjdXJyZW50IHZhbHVlcyB0aGUgYmFzZSwgYW5kIGNlbnRyZSB0aGUgc2xpZGVycy4iIiIKICAgIGJhc2UgPSBkaWN0KChrLCBfdmFsdWUobiwgaykpIGZvciBrIGluIExPT0tfS05PQlMgaWYgbi5rbm9iKGspKQogICAgb2xkID0ge30KICAgIHRyeToKICAgICAgICBvbGQgPSBqc29uLmxvYWRzKG5bImVhc3lfYmFzZSJdLnZhbHVlKCkgb3IgInt9IikKICAgIGV4Y2VwdCBWYWx1ZUVycm9yOgogICAgICAgIHBhc3MKICAgIGJhc2VbInJlbGllZiJdID0gcmVsaWVmIG9yIExBU1RfRklULmdldCgicmVsaWVmIikgb3Igb2xkLmdldCgicmVsaWVmIikgb3IgbWF4KG5bImZvZ19zb2Z0bmVzcyJdLnZhbHVlKCkgKiAzLjAsIDUwLjApCiAgICBuWyJlYXN5X2Jhc2UiXS5zZXRWYWx1ZShqc29uLmR1bXBzKGJhc2UpKQogICAgZm9yIG5hbWUsIG5ldXRyYWwsIF8gaW4gU0xJREVSUzoKICAgICAgICBuW25hbWVdLnNldFZhbHVlKG5ldXRyYWwpCiAgICBuWyJsb29rX3N0cmVuZ3RoIl0uc2V0VmFsdWUoMS4wKQoKCmRlZiBhcHBseV9lYXN5KG4pOgogICAgIiIiUmV3cml0ZSB0aGUgYWR2YW5jZWQga25vYnMgZnJvbSB0aGUgYmFzZSBhbmQgdGhlIHNsaWRlcnMuIiIiCiAgICB0cnk6CiAgICAgICAgYiA9IGpzb24ubG9hZHMoblsiZWFzeV9iYXNlIl0udmFsdWUoKSBvciAie30iKQogICAgZXhjZXB0IFZhbHVlRXJyb3I6CiAgICAgICAgYiA9IHt9CiAgICBpZiBub3QgYjoKICAgICAgICByZWJhc2UobikKICAgICAgICBiID0ganNvbi5sb2FkcyhuWyJlYXN5X2Jhc2UiXS52YWx1ZSgpKQogICAgcyA9IG5bImxvb2tfc3RyZW5ndGgiXS52YWx1ZSgpCiAgICBlID0gZGljdCgobmFtZSwgbltuYW1lXS52YWx1ZSgpKSBmb3IgbmFtZSwgXywgXyBpbiBTTElERVJTKQogICAgblsiaGF6ZV9hbW91bnQiXS5zZXRWYWx1ZShiWyJoYXplX2Ftb3VudCJdICogZVsiZWFzeV9oYXplIl0gKiBzKQogICAgblsiZm9nX2RlbnNpdHkiXS5zZXRWYWx1ZShiWyJmb2dfZGVuc2l0eSJdICogZVsiZWFzeV9mb2ciXSAqIHMpCiAgICBuWyJmb2dfdG9wIl0uc2V0VmFsdWUoYlsiZm9nX3RvcCJdICsgZVsiZWFzeV9mb2dfaGVpZ2h0Il0gKiBiWyJyZWxpZWYiXSkKICAgIG5bIm5vaXNlX2Ftb3VudCJdLnNldFZhbHVlKG1pbihiWyJub2lzZV9hbW91bnQiXSAqIGVbImVhc3lfdGV4dHVyZSJdLCAxLjUpICogcykKICAgIG5bInN1bl9zY2F0dGVyIl0uc2V0VmFsdWUoYlsic3VuX3NjYXR0ZXIiXSAqIGVbImVhc3lfZ2xvdyJdKQogICAgblsic2hhZG93X3N0cmVuZ3RoIl0uc2V0VmFsdWUobWluKG1heChiWyJzaGFkb3dfc3RyZW5ndGgiXSAqIGVbImVhc3lfc2hhZnRzIl0sIDAuMCksIDEuMCkpCiAgICB3ID0gZVsiZWFzeV93YXJtdGgiXQogICAgdGludCA9IGJbImhhemVfdGludCJdIGlmIGlzaW5zdGFuY2UoYlsiaGF6ZV90aW50Il0sIGxpc3QpIGVsc2UgW2JbImhhemVfdGludCJdXSAqIDMKICAgIG5bImhhemVfdGludCJdLnNldFZhbHVlKFt0aW50WzBdICogKDEuMCArIDAuMyAqIHcpLCB0aW50WzFdICogKDEuMCArIDAuMDUgKiB3KSwgdGludFsyXSAqICgxLjAgLSAwLjMgKiB3KV0pCgoKZGVmIGFwcGx5X2xvb2sobik6CiAgICAiIiJBcHBseSB0aGUgcGlja2VkIHByZXNldCBmaXR0ZWQgdG8gdGhlIHNob3QsIHRoZW4gc3RhcnQgRWFzeSBmcm9tIGl0LiIiIgogICAgTEFTVF9GSVQuY2xlYXIoKQogICAgc3VtbWFyeSA9IGFwcGx5X3ByZXNldChuKQogICAgcmViYXNlKG4pCiAgICByZXR1cm4gc3VtbWFyeQoKCmRlZiBzdXJwcmlzZShuKToKICAgICIiIlJhbmRvbSBzbGlkZXIgdmFsdWVzIHdpdGhpbiB0YXN0ZWZ1bCBsaW1pdHMuIiIiCiAgICBmb3IgbmFtZSwgXywgKGxvLCBoaSkgaW4gU0xJREVSUzoKICAgICAgICBuW25hbWVdLnNldFZhbHVlKHJvdW5kKHJhbmRvbS51bmlmb3JtKGxvLCBoaSksIDIpKQogICAgYXBwbHlfZWFzeShuKQoKCmRlZiByZXNldF9zbGlkZXJzKG4pOgogICAgIiIiQ2VudHJlIHRoZSBzbGlkZXJzOiBiYWNrIHRvIHRoZSBiYXNlIGxvb2suIiIiCiAgICBmb3IgbmFtZSwgbmV1dHJhbCwgXyBpbiBTTElERVJTOgogICAgICAgIG5bbmFtZV0uc2V0VmFsdWUobmV1dHJhbCkKICAgIG5bImxvb2tfc3RyZW5ndGgiXS5zZXRWYWx1ZSgxLjApCiAgICBhcHBseV9lYXN5KG4pCgoKZGVmIHNldF9hZHZhbmNlZChuLCByZWJhc2Vfb25faGlkZT1UcnVlKToKICAgICIiIlNob3cgb3IgaGlkZSB0aGUgYWR2YW5jZWQga25vYnMuIExlYXZpbmcgYWR2YW5jZWQgbWFrZXMgaXRzIHZhbHVlcyBFYXN5J3MgbmV3IGJhc2UuIiIiCiAgICBzaG93ID0gYm9vbChuWyJhZHZhbmNlZCJdLnZhbHVlKCkpCiAgICBpbnNpZGUgPSBGYWxzZQogICAgZm9yIGsgaW4gbi5hbGxLbm9icygpOgogICAgICAgIGlmIGsubmFtZSgpID09ICJlemRlcHRoaGF6ZSI6CiAgICAgICAgICAgIGluc2lkZSA9IFRydWUKICAgICAgICBlbGlmIGsuQ2xhc3MoKSA9PSAiVGFiX0tub2IiIGFuZCBrLm5hbWUoKSAhPSAiZXpkZXB0aGhhemUiOgogICAgICAgICAgICBpbnNpZGUgPSBGYWxzZQogICAgICAgIGlmIGluc2lkZToKICAgICAgICAgICAgay5zZXRWaXNpYmxlKHNob3cpCiAgICBpZiBub3Qgc2hvdyBhbmQgcmViYXNlX29uX2hpZGUgYW5kIG5bImVhc3lfYmFzZSJdLnZhbHVlKCk6CiAgICAgICAgcmViYXNlKG4pCgoKIyAtLS0tIExvb2tzIG9uIGRpc2sgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KCmRlZiBsb29rX2Rpcih3aGVyZSk6CiAgICBkID0gb3MuZW52aXJvbi5nZXQoTE9PS19ESVJTW3doZXJlXVsiZW52Il0pIG9yIExPT0tfRElSU1t3aGVyZV1bInBhdGgiXQogICAgcmV0dXJuIG9zLnBhdGguZXhwYW5kdXNlcihkKSBpZiBkIGVsc2UgIiIKCgpkZWYgbGlzdF9sb29rcygpOgogICAgIiIiJ1VzZXI6IG5hbWUnIC8gJ1N0dWRpbzogbmFtZScgZm9yIGV2ZXJ5IHNhdmVkIGxvb2suIiIiCiAgICBuYW1lcyA9IFtdCiAgICBmb3Igd2hlcmUgaW4gKCJVc2VyIiwgIlN0dWRpbyIpOgogICAgICAgIGQgPSBsb29rX2Rpcih3aGVyZSkKICAgICAgICBpZiBkIGFuZCBvcy5wYXRoLmlzZGlyKGQpOgogICAgICAgICAgICBmb3IgZiBpbiBzb3J0ZWQob3MubGlzdGRpcihkKSk6CiAgICAgICAgICAgICAgICBpZiBmLmVuZHN3aXRoKCIuanNvbiIpOgogICAgICAgICAgICAgICAgICAgIG5hbWVzLmFwcGVuZCgiJXM6ICVzIiAlICh3aGVyZSwgZls6LTVdKSkKICAgIHJldHVybiBuYW1lcwoKCmRlZiByZWZyZXNoX2xvb2tfbWVudShuKToKICAgIGxvb2tzID0gbGlzdF9sb29rcygpCiAgICBuWyJteV9sb29rcyJdLnNldFZhbHVlcyhsb29rcyBvciBbIihubyBzYXZlZCBsb29rcykiXSkKICAgIHJldHVybiBsb29rcwoKCmRlZiBzYXZlX2xvb2sobik6CiAgICBuYW1lID0gblsibG9va19uYW1lIl0udmFsdWUoKS5zdHJpcCgpCiAgICB3aGVyZSA9IG5bInNhdmVfdG8iXS52YWx1ZSgpCiAgICBkID0gbG9va19kaXIod2hlcmUpCiAgICBpZiBub3QgbmFtZToKICAgICAgICByYWlzZSBWYWx1ZUVycm9yKCJ0eXBlIGEgbG9vayBuYW1lIGZpcnN0IikKICAgIGlmIG5vdCBkOgogICAgICAgIHJhaXNlIFZhbHVlRXJyb3IoIm5vICVzIGxvb2tzIGZvbGRlcjogc2V0ICQlcyIgJSAod2hlcmUubG93ZXIoKSwgTE9PS19ESVJTW3doZXJlXVsiZW52Il0pKQogICAgaWYgbm90IG9zLnBhdGguaXNkaXIoZCk6CiAgICAgICAgb3MubWFrZWRpcnMoZCkKICAgIHNhZmUgPSAiIi5qb2luKGMgaWYgYy5pc2FsbnVtKCkgb3IgYyBpbiAiIF8tIiBlbHNlICJfIiBmb3IgYyBpbiBuYW1lKQogICAgcGF0aCA9IG9zLnBhdGguam9pbihkLCBzYWZlICsgIi5qc29uIikKICAgIGxvb2sgPSB7Im5hbWUiOiBuYW1lLCAicHJlc2V0IjogblsicHJlc2V0Il0udmFsdWUoKSwKICAgICAgICAgICAgImtub2JzIjogZGljdCgoaywgX3ZhbHVlKG4sIGspKSBmb3IgayBpbiBMT09LX0tOT0JTIGlmIG4ua25vYihrKSl9CiAgICB3aXRoIG9wZW4ocGF0aCwgInciKSBhcyBmOgogICAgICAgIGpzb24uZHVtcChsb29rLCBmLCBpbmRlbnQ9MSkKICAgIHJlZnJlc2hfbG9va19tZW51KG4pCiAgICByZXR1cm4gcGF0aAoKCmRlZiBsb2FkX2xvb2sobiwgbGFiZWw9Tm9uZSk6CiAgICBsYWJlbCA9IGxhYmVsIG9yIG5bIm15X2xvb2tzIl0udmFsdWUoKQogICAgaWYgIjogIiBub3QgaW4gbGFiZWw6CiAgICAgICAgcmV0dXJuIE5vbmUKICAgIHdoZXJlLCBuYW1lID0gbGFiZWwuc3BsaXQoIjogIiwgMSkKICAgIHBhdGggPSBvcy5wYXRoLmpvaW4obG9va19kaXIod2hlcmUpLCBuYW1lICsgIi5qc29uIikKICAgIHdpdGggb3BlbihwYXRoKSBhcyBmOgogICAgICAgIGxvb2sgPSBqc29uLmxvYWQoZikKICAgIGZvciBrLCB2IGluIGxvb2tbImtub2JzIl0uaXRlbXMoKToKICAgICAgICBpZiBuLmtub2Ioayk6CiAgICAgICAgICAgIG5ba10uc2V0VmFsdWUodikKICAgIHJlYmFzZShuKQogICAgcmV0dXJuIHBhdGgKCgojIC0tLS0gVGh1bWJuYWlscyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQoKZGVmIHJlbmRlcl90aHVtYm5haWxzKG4sIHdpZHRoPTE2MCk6CiAgICAiIiJBIHNtYWxsIHJlbmRlciBvZiBldmVyeSBwcmVzZXQgb24gdGhpcyBmcmFtZSwgc2hvd24gb24gdGhlIGxvb2sgYnV0dG9ucy4KCiAgICBSZW5kZXJzIGEgdGVtcG9yYXJ5IGNvcHkgb2YgdGhlIG5vZGUgb24gYSBkb3duc2l6ZWQgcGxhdGUsIHdyaXRlcyBhIEpQRUcgcGVyIGxvb2sgdG8gdGhlCiAgICB0ZW1wIGZvbGRlciBhbmQgZGVsZXRlcyB0aGUgY29weSwgc28gbm90aGluZyBzdGF5cyBpbiBtZW1vcnkuIiIiCiAgICBwbGF0ZSA9IG4uaW5wdXQoMCkKICAgIGlmIHBsYXRlIGlzIE5vbmU6CiAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigiY29ubmVjdCBhIHBsYXRlIGZpcnN0IikKICAgIGZvbGRlciA9IG9zLnBhdGguam9pbih0ZW1wZmlsZS5nZXR0ZW1wZGlyKCksICJlemRlcHRoaGF6ZV90aHVtYnMiKQogICAgaWYgbm90IG9zLnBhdGguaXNkaXIoZm9sZGVyKToKICAgICAgICBvcy5tYWtlZGlycyhmb2xkZXIpCiAgICBrZWVwID0gW3ggZm9yIHggaW4gbnVrZS5zZWxlY3RlZE5vZGVzKCldCiAgICBmb3IgeCBpbiBudWtlLmFsbE5vZGVzKCk6CiAgICAgICAgeC5zZXRTZWxlY3RlZChGYWxzZSkKICAgIG4uc2V0U2VsZWN0ZWQoVHJ1ZSkKICAgIGNsaXAgPSBvcy5wYXRoLmpvaW4oZm9sZGVyLCAiX2NvcHkubmsiKQogICAgbnVrZS5ub2RlQ29weShjbGlwKQogICAgbi5zZXRTZWxlY3RlZChGYWxzZSkKICAgIGNvcHkgPSBudWtlLm5vZGVQYXN0ZShjbGlwKQogICAgb3MucmVtb3ZlKGNsaXApCiAgICBzbWFsbCA9IG51a2Uubm9kZXMuUmVmb3JtYXQodHlwZT0ic2NhbGUiLCBmaWx0ZXI9IkltcHVsc2UiKQogICAgc21hbGxbInNjYWxlIl0uc2V0VmFsdWUoZmxvYXQod2lkdGgpIC8gbWF4KHBsYXRlLndpZHRoKCksIDEpKQogICAgc21hbGwuc2V0SW5wdXQoMCwgcGxhdGUpCiAgICBjb3B5LnNldElucHV0KDAsIHNtYWxsKQogICAgZm9yIGkgaW4gKDEsIDIpOgogICAgICAgIGNvcHkuc2V0SW5wdXQoaSwgbi5pbnB1dChpKSkKICAgIGNvcHlbInNob3dfYmVmb3JlIl0uc2V0VmFsdWUoRmFsc2UpCiAgICBvdXQgPSBudWtlLm5vZGVzLldyaXRlKGZpbGVfdHlwZT0ianBlZyIsIGNoYW5uZWxzPSJyZ2IiKQogICAgb3V0WyJjb2xvcnNwYWNlIl0uc2V0VmFsdWUoInNSR0IiKQogICAgb3V0LnNldElucHV0KDAsIGNvcHkpCiAgICBwYXRocyA9IFtdCiAgICB0cnk6CiAgICAgICAgZm9yIGksIG5hbWUgaW4gZW51bWVyYXRlKG5bInByZXNldCJdLnZhbHVlcygpKToKICAgICAgICAgICAgY29weVsicHJlc2V0Il0uc2V0VmFsdWUobmFtZSkKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgZml0KGNvcHksIG5hbWUpCiAgICAgICAgICAgIGV4Y2VwdCBWYWx1ZUVycm9yOgogICAgICAgICAgICAgICAgX3BsYWluKGNvcHksIFBSRVNFVFNbbmFtZV0pCiAgICAgICAgICAgIHBhdGggPSBvcy5wYXRoLmpvaW4oZm9sZGVyLCAiJXNfJWQuanBnIiAlIChuLm5hbWUoKSwgaSkpLnJlcGxhY2UoIlxcIiwgIi8iKQogICAgICAgICAgICBvdXRbImZpbGUiXS5zZXRWYWx1ZShwYXRoKQogICAgICAgICAgICBudWtlLmV4ZWN1dGUob3V0LCBudWtlLmZyYW1lKCksIG51a2UuZnJhbWUoKSkKICAgICAgICAgICAgcGF0aHMuYXBwZW5kKHBhdGgpCiAgICAgICAgICAgIGtub2IgPSBuLmtub2IoImxvb2tfJWQiICUgaSkKICAgICAgICAgICAgaWYga25vYiBpcyBub3QgTm9uZToKICAgICAgICAgICAgICAgIGtub2Iuc2V0TGFiZWwoIjxpbWcgc3JjPVwiJXNcIj48YnI+JXMiICUgKHBhdGgsIG5hbWUpKQogICAgZmluYWxseToKICAgICAgICBmb3IgeCBpbiAob3V0LCBjb3B5LCBzbWFsbCk6CiAgICAgICAgICAgIG51a2UuZGVsZXRlKHgpCiAgICAgICAgZm9yIHggaW4ga2VlcDoKICAgICAgICAgICAgeC5zZXRTZWxlY3RlZChUcnVlKQogICAgcmV0dXJuIHBhdGhzCgoKZGVmIGVhc3lfbWVzc2FnZSh0ZXh0KToKICAgIGlmIG51a2UuR1VJOgogICAgICAgIG51a2UubWVzc2FnZSh0ZXh0KQogICAgZWxzZToKICAgICAgICBwcmludCh0ZXh0KQo=
+ addUserKnob {20 ezdepthhaze l Advanced}
  addUserKnob {4 view_output l "view output" t "What the main rgb shows. Every pass is also written to its own layer: plate * haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result." M {"Hazed Plate" "Haze Transmittance" "Haze In-scatter" "Haze Sun" "Haze Sky" "Haze Shadow" "Haze Fog" "Haze Wisps" "Surface Sunlight" "Surface Sun Visibility" "World Position (P)" "Normals (N)"}}
  addUserKnob {26 plate_divider l Plate}
  addUserKnob {4 plate_type l plate t "Camera: a perspective render or plate, with its Camera plugged into the 'camera' input. Lat-long: a 360 lat-long render, such as an environment of the mountains." M {Camera Lat-long}}
@@ -125,12 +161,19 @@ Gizmo {
  }
  Input {
   inputs 0
+  name plate
+  xpos 0
+  ypos -300
+ }
+set Na85d4000 [stack 0]
+ Input {
+  inputs 0
   name atmos
   xpos 600
   ypos -300
   number 2
  }
-set Na3344800 [stack 0]
+set Na85d4800 [stack 0]
 add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -141,7 +184,7 @@ add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_insca
   xpos 750
   ypos -200
  }
-push $Na3344800
+push $Na85d4800
 add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -168,7 +211,7 @@ add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green
   xpos 750
   ypos -120
  }
-push $Na3344800
+push $Na85d4800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 atmos_haze_color
@@ -178,7 +221,7 @@ push $Na3344800
   xpos 600
   ypos -200
  }
-set Na3345000 [stack 0]
+set Na85d5000 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -186,7 +229,7 @@ set Na3345000 [stack 0]
   xpos 650
   ypos -170
  }
-push $Na3344800
+push $Na85d4800
 add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -204,8 +247,8 @@ add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky
   xpos 500
   ypos -140
  }
-set Na336cf00 [stack 0]
-push $Na3345000
+set Na85fcf00 [stack 0]
+push $Na85d5000
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -213,7 +256,7 @@ push $Na3345000
   xpos 600
   ypos -170
  }
-push $Na3344800
+push $Na85d4800
 add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -231,7 +274,7 @@ add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun
   xpos 450
   ypos -140
  }
-set Na336ca00 [stack 0]
+set Na85fca00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -282,8 +325,8 @@ set Na336ca00 [stack 0]
   xpos 750
   ypos -30
  }
-set Na33c6c00 [stack 0]
-push $Na336cf00
+set Na8656c00 [stack 0]
+push $Na85fcf00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -291,8 +334,8 @@ push $Na336cf00
   xpos 500
   ypos -80
  }
-set Na33c7400 [stack 0]
-push $Na336ca00
+set Na8657400 [stack 0]
+push $Na85fca00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -300,15 +343,9 @@ push $Na336ca00
   xpos 450
   ypos -80
  }
-set Na33c7000 [stack 0]
- Input {
-  inputs 0
-  name plate
-  xpos 0
-  ypos -300
- }
-set Na3344000 [stack 0]
-push $Na3344000
+set Na8657000 [stack 0]
+push $Na85d4000
+push $Na85d4000
  Copy {
   inputs 2
   from0 depth.Z
@@ -317,8 +354,8 @@ push $Na3344000
   xpos 150
   ypos -200
  }
-set Na3344c00 [stack 0]
-push $Na3344000
+set Na85d4c00 [stack 0]
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -384,12 +421,12 @@ push $Na3344000
   xpos 540
   ypos -80
  }
-set Na341d400 [stack 0]
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Na86ad400 [stack 0]
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -455,12 +492,12 @@ push $Na3344000
   xpos 420
   ypos -80
  }
-set Na341d000 [stack 0]
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Na86ad000 [stack 0]
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -526,7 +563,7 @@ push $Na3344000
   xpos 300
   ypos -80
  }
-set Na341cc00 [stack 0]
+set Na86acc00 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -534,20 +571,20 @@ set Na341cc00 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set Nf896cc00 [stack 0]
-push $Na341cc00
+set Nfdc2cc00 [stack 0]
+push $Na86acc00
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set Nf896d000 [stack 0]
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Nfdc2d000 [stack 0]
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -613,7 +650,7 @@ push $Na3344000
   xpos 180
   ypos -80
  }
-set Na341c800 [stack 0]
+set Na86ac800 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -621,8 +658,8 @@ set Na341c800 [stack 0]
   name Wisps
   xpos 360
  }
-set Nf896c800 [stack 0]
-push $Na341c800
+set Nfdc2c800 [stack 0]
+push $Na86ac800
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -630,11 +667,11 @@ push $Na341c800
   name FogShare
   xpos 240
  }
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -700,12 +737,12 @@ push $Na3344000
   xpos -60
   ypos -80
  }
-set Na341c000 [stack 0]
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Na86ac000 [stack 0]
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -771,7 +808,7 @@ push $Na3344000
   xpos -180
   ypos -80
  }
-set Na33c7c00 [stack 0]
+set Na8657c00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -779,7 +816,7 @@ set Na33c7c00 [stack 0]
   name InScatter
   xpos 0
  }
-set Na341d800 [stack 0]
+set Na86ad800 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -788,13 +825,13 @@ set Na341d800 [stack 0]
   xpos 240
   ypos 40
  }
-set Nf896c400 [stack 0]
-push $Na33c7c00
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Nfdc2c400 [stack 0]
+push $Na8657c00
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -867,15 +904,15 @@ push $Na3344000
   name ShadowLoss
   xpos 120
  }
-set Na341dc00 [stack 0]
-push $Na341c000
-push $Na33c7c00
-push $Na341d800
-push $Na33c6c00
-push $Na33c7400
-push $Na33c7000
-push $Na3344c00
-push $Na3344000
+set Na86adc00 [stack 0]
+push $Na86ac000
+push $Na8657c00
+push $Na86ad800
+push $Na8656c00
+push $Na8657400
+push $Na8657000
+push $Na85d4c00
+push $Na85d4000
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -941,21 +978,21 @@ push $Na3344000
   xpos -300
   ypos -80
  }
-set Na33c7800 [stack 0]
-push $Na341d400
-push $Na341d000
-push $Nf896cc00
-push $Nf896d000
-push $Nf896c800
-push $Nf896c400
-push $Na341dc00
-push $Na341c000
-push $Na33c7c00
-push $Na341d800
-push $Na33c7800
-push $Na341d800
-push $Na33c7800
-push $Nf896d000
+set Na8657800 [stack 0]
+push $Na86ad400
+push $Na86ad000
+push $Nfdc2cc00
+push $Nfdc2d000
+push $Nfdc2c800
+push $Nfdc2c400
+push $Na86adc00
+push $Na86ac000
+push $Na8657c00
+push $Na86ad800
+push $Na8657800
+push $Na86ad800
+push $Na8657800
+push $Nfdc2d000
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -963,7 +1000,7 @@ push $Nf896d000
   xpos 600
   ypos 40
  }
-push $Na3344000
+push $Na85d4000
  Merge2 {
   inputs 2
   operation plus
@@ -995,7 +1032,7 @@ push $Na3344000
   xpos 0
   ypos 200
  }
-push $Na3344000
+push $Na85d4000
  Copy {
   inputs 2
   channels rgb
@@ -1145,6 +1182,13 @@ add_layer {N N.red N.green N.blue}
   name Layer_N
   xpos 0
   ypos 720
+ }
+ Switch {
+  inputs 2
+  which {{parent.show_before}}
+  name BeforeAfter
+  xpos 0
+  ypos 760
  }
  Output {
   name Output1
