@@ -73,24 +73,24 @@ channel of the plate and adds the layers listed under Layers below.
 
 ## Presets
 
-Pick a look in *preset* and press *apply*: it sets EzDepthHaze's knobs and leaves them all
-editable. Fog heights are set relative to the camera, so the presets work at any scene
-scale. The sun is not part of a preset (it lives on EzAtmosScatter); the *preset* tooltip
-suggests one for each look. *haze tint* colours all the haze light.
+Pick a look in *preset* and it is applied straight away, fitted to the shot (see below);
+every knob stays editable. *apply* applies it again, for example after connecting the plate
+and camera, or to undo your tweaks. A short summary pops up, and when the EzAtmosScatter
+sun is far from where the look wants it, it asks whether to move it there (sun direction
+and colour, with *sun from* set to Manual). *haze tint* colours all the haze light.
 
-| Preset | Look | Suggested sun |
+| Preset | Look | Sun it offers |
 | --- | --- | --- |
-| Clear Day | Light blue aerial perspective, crisp shadows, no fog | High, 30-45 degrees, from the side |
-| Golden Hour | Warm haze, strong shafts, light valley fog | Low, 2-6 degrees, in front of the camera |
-| Valley Fog | A dense fog lake in the valleys, clear air above | Low morning sun, 8-15 degrees |
-| Smoke Haze | Thick brown-orange haze, low contrast | Dimmed and reddened |
-| Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | Any |
+| Clear Day | Light blue aerial perspective, crisp shadows, no fog | 35 degrees up, 60 degrees right, white |
+| Golden Hour | Warm haze, strong shafts, light valley fog | 4 degrees up, 15 degrees left, warm |
+| Valley Fog | A dense fog lake in the valleys, clear air above | 10 degrees up, 30 degrees left, slightly warm |
+| Smoke Haze | Thick brown-orange haze, low contrast | 8 degrees up, 20 degrees left, reddened |
+| Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | None |
 
-### Fit to shot
+### Fitted to the shot
 
-The presets were tuned on the demo: terrain 6-130 km away, seen from 4.3 km up. *apply*
-sets their values as they are; **fit to shot** sets them scaled to the shot in the node's
-inputs. It measures the depth and camera at the current frame and sets:
+The presets were tuned on the demo: terrain 6-130 km away, seen from 4.3 km up. Applying
+one measures the depth and camera at the current frame and sets:
 
 - *haze amount*, so the median terrain pixel gets the demo's amount of haze;
 - *fog top* and *fog softness*, at the same place in the shot's range of terrain altitudes;
@@ -98,13 +98,13 @@ inputs. It measures the depth and camera at the current frame and sets:
   the scene's distances;
 - *sky depth*, when a far backdrop (a skydome or card) stands well apart from the terrain.
 
-It writes a summary under the button, with a warning when the sun is beside or behind the
-camera or high in the sky, which the presets don't expect. It runs only when pressed, so
-renders see plain knob values. This matches the look, not the physics: a 2 km shot gets far
-denser haze than real air would give it.
+Without a plate or camera yet, the preset is applied as tuned. Picking a preset only applies
+it from the open panel, never while a script loads or renders, so tuned knobs stay put.
+This matches the look, not the physics: a 2 km shot gets far denser haze than real air
+would give it.
 
-The preset values are baked into the gizmo's apply button; edit them in
-`python/ezdepthhaze.py` and rebuild the gizmo.
+The preset values are built into the gizmo; edit them in `python/ezdepthhaze.py` and
+rebuild the gizmo.
 
 ## Fog and noise
 

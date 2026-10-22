@@ -62,49 +62,33 @@ def _double(name, label, lo, hi, tip, value):
     return knob, value
 
 
-def _preset_script():
-    """The apply button's script, with the preset values baked in, so the gizmo needs no
-    Python module at run time. python/ezdepthhaze.py is where the values are edited."""
-    presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"]})
-                   for name, p in ezdepthhaze.PRESETS)
-    return "\n".join([
-        "n = nuke.thisNode()",
-        "presets = %r" % presets,
-        "p = presets[n['preset'].value()]",
-        "for k, v in p['knobs'].items():",
-        "    n[k].setValue(v)",
-        "if p['fog_below_camera'] is not None:",
-        "    cam = n.input(1)",
-        "    if n['plate_type'].getValue() == 0 and cam is not None and cam.knob('world_matrix'):",
-        "        height = cam['world_matrix'].getValue(7) * n['depth_scale'].getValue()",
-        "    else:",
-        "        height = n['latlong_camera_height'].getValue()",
-        "    n['fog_top'].setValue(height - p['fog_below_camera'])",
-    ])
-
-
-def _fit_script():
-    """The fit to shot button's script: python/fit_to_shot.py with the presets and the demo's
-    measurements filled in, then run on this node."""
+def _apply_code():
+    """python/fit_to_shot.py with the presets and the demo's measurements filled in, so the
+    gizmo needs no Python module at run time. python/ezdepthhaze.py is where the values are
+    edited."""
     presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
-                           "suggested_sun": p["suggested_sun"]}) for name, p in ezdepthhaze.PRESETS)
+                           "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
+                   for name, p in ezdepthhaze.PRESETS)
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
-    code = code.replace("REFERENCE = {}", "REFERENCE = %r" % ezdepthhaze.REFERENCE)
-    return code + "\n".join([
-        "",
-        "n = nuke.thisNode()",
-        "try:",
-        "    summary = fit(n)",
-        "except ValueError as e:",
-        "    summary = 'Fit to shot: %s' % e",
-        "n['fit_info'].setValue(summary.replace('\\n', '<br>'))",
-        "if nuke.GUI:",
-        "    nuke.message(summary)",
-        "else:",
-        "    print(summary)",
-    ])
+    return code.replace("REFERENCE = {}", "REFERENCE = %r" % ezdepthhaze.REFERENCE)
+
+
+def _apply_script():
+    # The apply button: re-fit the picked preset, e.g. after connecting the inputs. The code
+    # runs in its own namespace so its functions can call each other.
+    return "d = {}\nexec(%r, d)\nd['apply_preset'](nuke.thisNode())\n" % _apply_code()
+
+
+def _knob_changed_script():
+    # Picking a preset in the open panel applies it straight away, fitted to the shot. Only
+    # then: knobChanged also runs while a script loads (and on the farm), where it must not
+    # reset the knobs an artist tuned.
+    return ("if nuke.thisKnob().name() == 'preset' and nuke.GUI and nuke.thisNode().shown():\n"
+            "    d = {}\n"
+            "    exec(%r, d)\n"
+            "    d['apply_preset'](nuke.thisNode())\n" % _apply_code())
 
 
 def _add_knobs(group, depth_pick, env_pick):
@@ -118,21 +102,16 @@ def _add_knobs(group, depth_pick, env_pick):
 
     add(nuke.Tab_Knob("ezdepthhaze", "EzDepthHaze"))
     preset = nuke.Enumeration_Knob("preset", "preset", ezdepthhaze.PRESET_NAMES)
-    preset.setTooltip("A starting look. Pick one and press apply; every knob stays editable afterwards. "
-                      "Fog heights are set relative to the camera. Suggested suns (set on EzAtmosScatter):\n"
+    preset.setTooltip("A starting look, applied as soon as you pick it and fitted to this shot: the depth and "
+                      "camera are measured at this frame and haze amount, fog height, noise and distances are "
+                      "scaled to match the demo the presets were tuned on. Every knob stays editable afterwards. "
+                      "Afterwards it offers to move the EzAtmosScatter sun to where the look wants it:\n"
                       + ezdepthhaze.preset_tooltip())
     add(preset, 1)
-    apply = nuke.PyScript_Knob("apply_preset", "apply", _preset_script())
-    apply.setTooltip("Sets the knobs of the chosen preset.")
+    apply = nuke.PyScript_Knob("apply_preset", "apply", _apply_script())
+    apply.setTooltip("Applies the picked preset again, fitted to the shot: e.g. after connecting the plate and "
+                     "camera, or to undo your tweaks.")
     add(apply)
-    fit = nuke.PyScript_Knob("fit_preset", "fit to shot", _fit_script())
-    fit.setTooltip("Sets the chosen preset scaled to this shot: measures the depth and camera at this frame and "
-                   "sets haze amount, fog top and softness, noise size, wind, shadow and match distances, and the "
-                   "sky depth of a far backdrop, so the look matches the demo's at any scene scale.")
-    add(fit)
-    info = nuke.Text_Knob("fit_info", "", "")
-    info.setFlag(nuke.STARTLINE)
-    add(info)
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
     view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
                     "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")
@@ -281,6 +260,7 @@ def _add_knobs(group, depth_pick, env_pick):
         group.addKnob(knob)
     for name, value in defaults.items():
         group[name].setValue(value)
+    group["knobChanged"].setValue(_knob_changed_script())
 
 
 def _link_haze(node, output):
