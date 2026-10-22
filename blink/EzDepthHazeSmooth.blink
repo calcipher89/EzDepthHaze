@@ -1,9 +1,11 @@
-// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.
+// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.
 //
-// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This
-// averages each pixel with its neighbours, but only those at about the same depth, so the
-// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth
-// (sky) only average with each other.
+// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away
+// from depth edges this averages each pixel with its neighbours at about the same depth, so
+// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain
+// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it
+// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own
+// antialiased edge does. Pixels with no depth (sky) count as infinitely far.
 //
 // Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).
 
@@ -16,11 +18,13 @@ kernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>
 param:
   float radius;
   float edge;
+  float antialias;
 
   void define()
   {
     defineParam(radius, "radius", 2.0f);
     defineParam(edge, "edge", 0.03f);
+    defineParam(antialias, "antialias", 1.0f);
   }
 
   float key(float d)
@@ -31,12 +35,39 @@ param:
 
   void process(int2 pos)
   {
+    float kc = key(depth(pos.x, pos.y).x);
+
+    // Near a depth edge: blend across it.
+    int a = int(antialias + 0.5f);
+    if (a > 0) {
+      bool atEdge = false;
+      for (int dy = -a; dy <= a && !atEdge; dy++)
+        for (int dx = -a; dx <= a; dx++)
+          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) {
+            atEdge = true;
+            break;
+          }
+      if (atEdge) {
+        float s2 = 0.5f * antialias * antialias + 0.25f;
+        float4 sum = float4(0.0f);
+        float wsum = 0.0f;
+        for (int dy = -a; dy <= a; dy++)
+          for (int dx = -a; dx <= a; dx++) {
+            float w = exp(-(dx * dx + dy * dy) / s2);
+            sum += src(pos.x + dx, pos.y + dy) * w;
+            wsum += w;
+          }
+        dst() = sum / wsum;
+        return;
+      }
+    }
+
+    // Elsewhere: smooth only between pixels at about the same depth.
     int r = int(radius + 0.5f);
     if (r <= 0) {
       dst() = src(pos.x, pos.y);
       return;
     }
-    float kc = key(depth(pos.x, pos.y).x);
     float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);
     float4 sum = float4(0.0f);
     float wsum = 0.0f;

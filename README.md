@@ -122,7 +122,9 @@ At the top of the tab:
 - **smooth grain** (pixels, 2 by default) averages away the sampling grain in the haze
   layers, only between pixels at about the same depth, so ridges stay sharp; **blue noise**
   (on) spreads the sampling evenly so what grain is left is finer. For finals, also raise
-  *steps* and *shadow quality*.
+  *steps* and *shadow quality*. **edge antialias** (Off, 1x, 2x, 3x; 1x by default) blends
+  the haze across depth edges over 1 to 3 pixels, so the grain and stair-stepping along
+  ridge lines and silhouettes goes away.
 - **view output** picks what rgb shows; **viewer resolution** (Half by default) computes
   the haze at half or quarter size in the GUI and scales it back up, for about a quarter
   or a sixteenth of the GPU memory. Renders from a terminal always run at full size.

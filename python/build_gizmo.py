@@ -199,6 +199,11 @@ def _add_easy_knobs(add):
                     "visible. Off: plain random sampling, as in earlier versions.")
     blue.clearFlag(nuke.STARTLINE)
     add(blue, True)
+    aa = nuke.Enumeration_Knob("edge_antialias", "edge antialias", ["Off", "1x", "2x", "3x"])
+    aa.setTooltip("Blends the haze across depth edges (ridge lines, silhouettes) over 1 to 3 pixels, like a "
+                  "small 3x3 blur at the edges only, so the grain and stair-stepping along them goes away.")
+    aa.setFlag(nuke.STARTLINE)
+    add(aa, 1)
     strength = nuke.Double_Knob("look_strength", "look strength")
     strength.setRange(0, 1)
     strength.setTooltip("From clear air (0) to the full look (1).")
@@ -651,6 +656,7 @@ def build():
             smooth.setInput(1, work_depth)
             _load_kernel(smooth, "EzDepthHazeSmooth.blink")
             _link(smooth, "radius", "parent.smooth * (%s)" % work)
+            _link(smooth, "antialias", "parent.edge_antialias * (%s)" % work)
             node = smooth
         full = nuke.nodes.Reformat(name="Full_" + key, type="to box", box_fixed=True, resize="distort",
                                    filter="Cubic", xpos=120 * i - 300, ypos=-50)
