@@ -35,6 +35,8 @@ Group {
  smooth 2
  addUserKnob {6 blue_noise l "blue noise" t "Spreads the sampling evenly from pixel to pixel, so the leftover grain is finer and less visible. Off: plain random sampling, as in earlier versions." -STARTLINE}
  blue_noise true
+ addUserKnob {4 edge_antialias l "edge antialias" t "Blends the haze across depth edges (ridge lines, silhouettes) over 1 to 3 pixels, like a small 3x3 blur at the edges only, so the grain and stair-stepping along them goes away." M {Off 1x 2x 3x}}
+ edge_antialias 1x
  addUserKnob {7 look_strength l "look strength" t "From clear air (0) to the full look (1)."}
  look_strength 1
  addUserKnob {26 vis_divider l Visibility}
@@ -193,7 +195,7 @@ Group {
   xpos 0
   ypos -300
  }
-set N1a4000 [stack 0]
+set N28654000 [stack 0]
  Input {
   inputs 0
   name atmos
@@ -201,7 +203,7 @@ set N1a4000 [stack 0]
   ypos -300
   number 2
  }
-set N1a4800 [stack 0]
+set N28654800 [stack 0]
 add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -212,7 +214,7 @@ add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_insca
   xpos 750
   ypos -200
  }
-push $N1a4800
+push $N28654800
 add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -239,7 +241,7 @@ add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green
   xpos 750
   ypos -120
  }
-push $N1a4800
+push $N28654800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 atmos_haze_color
@@ -249,7 +251,7 @@ push $N1a4800
   xpos 600
   ypos -200
  }
-set N1a5000 [stack 0]
+set N28655000 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -257,7 +259,7 @@ set N1a5000 [stack 0]
   xpos 650
   ypos -170
  }
-push $N1a4800
+push $N28654800
 add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -275,8 +277,8 @@ add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky
   xpos 500
   ypos -140
  }
-set N1ccf00 [stack 0]
-push $N1a5000
+set N2867cf00 [stack 0]
+push $N28655000
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -284,7 +286,7 @@ push $N1a5000
   xpos 600
   ypos -170
  }
-push $N1a4800
+push $N28654800
 add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -302,7 +304,7 @@ add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun
   xpos 450
   ypos -140
  }
-set N1cca00 [stack 0]
+set N2867ca00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -353,8 +355,8 @@ set N1cca00 [stack 0]
   xpos 750
   ypos -30
  }
-set N226c00 [stack 0]
-push $N1ccf00
+set N286d6c00 [stack 0]
+push $N2867cf00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -362,8 +364,8 @@ push $N1ccf00
   xpos 500
   ypos -80
  }
-set N227400 [stack 0]
-push $N1cca00
+set N286d7400 [stack 0]
+push $N2867ca00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -371,9 +373,9 @@ push $N1cca00
   xpos 450
   ypos -80
  }
-set N227000 [stack 0]
-push $N1a4000
-push $N1a4000
+set N286d7000 [stack 0]
+push $N28654000
+push $N28654000
  Copy {
   inputs 2
   from0 depth.Z
@@ -390,8 +392,8 @@ push $N1a4000
   xpos 150
   ypos -130
  }
-set N25e000 [stack 0]
-push $N1a4000
+set N2870e000 [stack 0]
+push $N28654000
  Reformat {
   type scale
   scale {{"\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1"}}
@@ -399,7 +401,7 @@ push $N1a4000
   xpos 0
   ypos -130
  }
-set N227800 [stack 0]
+set N286d7800 [stack 0]
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -478,12 +480,12 @@ set N227800 [stack 0]
   xpos 540
   ypos -50
  }
-set N448bf400 [stack 0]
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N7fcd1400 [stack 0]
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -562,12 +564,12 @@ push $N227800
   xpos 420
   ypos -50
  }
-set N448be800 [stack 0]
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N7fcd0800 [stack 0]
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -646,7 +648,7 @@ push $N227800
   xpos 300
   ypos -50
  }
-set N44879c00 [stack 0]
+set N7fc89c00 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -654,21 +656,21 @@ set N44879c00 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set N4490b000 [stack 0]
-push $N44879c00
+set N1fab000 [stack 0]
+push $N7fc89c00
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set N4490b400 [stack 0]
-push $N25e000
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N1fab400 [stack 0]
+push $N2870e000
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -740,10 +742,11 @@ push $N227800
  BlinkScript {
   inputs 2
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise d0c0093d3d8e2d728558dceeafce3ea8e06a886a21592e8de14e280d8fd81db0 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 2 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== 2 \"radius\" 1 1 Default \"edge\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This\n// averages each pixel with its neighbours, but only those at about the same depth, so the\n// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth\n// (sky) only average with each other.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float kc = key(depth(pos.x, pos.y).x);\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise 658ba452864882b2db0d295ffa9ea6ce5c81b09f87db3d7136dd70dc120b39f3 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 3 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== \"antialias\" Float 1 AACAPw== 3 \"radius\" 1 1 Default \"edge\" 1 1 Default \"antialias\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away\n// from depth edges this averages each pixel with its neighbours at about the same depth, so\n// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain\n// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it\n// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own\n// antialiased edge does. Pixels with no depth (sky) count as infinitely far.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n  float antialias;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n    defineParam(antialias, \"antialias\", 1.0f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    float kc = key(depth(pos.x, pos.y).x);\n\n    // Near a depth edge: blend across it.\n    int a = int(antialias + 0.5f);\n    if (a > 0) \{\n      bool atEdge = false;\n      for (int dy = -a; dy <= a && !atEdge; dy++)\n        for (int dx = -a; dx <= a; dx++)\n          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) \{\n            atEdge = true;\n            break;\n          \}\n      if (atEdge) \{\n        float s2 = 0.5f * antialias * antialias + 0.25f;\n        float4 sum = float4(0.0f);\n        float wsum = 0.0f;\n        for (int dy = -a; dy <= a; dy++)\n          for (int dx = -a; dx <= a; dx++) \{\n            float w = exp(-(dx * dx + dy * dy) / s2);\n            sum += src(pos.x + dx, pos.y + dy) * w;\n            wsum += w;\n          \}\n        dst() = sum / wsum;\n        return;\n      \}\n    \}\n\n    // Elsewhere: smooth only between pixels at about the same depth.\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeSmooth_radius {{"parent.smooth * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
+  EzDepthHazeSmooth_antialias {{"parent.edge_antialias * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
   rebuild_finalise ""
   name Smooth_masks
   xpos 180
@@ -759,7 +762,7 @@ push $N227800
   xpos 180
   ypos -50
  }
-set N44879000 [stack 0]
+set N7fc89000 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -767,8 +770,8 @@ set N44879000 [stack 0]
   name Wisps
   xpos 360
  }
-set N4490ac00 [stack 0]
-push $N44879000
+set N1faac00 [stack 0]
+push $N7fc89000
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -776,12 +779,12 @@ push $N44879000
   name FogShare
   xpos 240
  }
-push $N25e000
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+push $N2870e000
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -853,10 +856,11 @@ push $N227800
  BlinkScript {
   inputs 2
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise d0c0093d3d8e2d728558dceeafce3ea8e06a886a21592e8de14e280d8fd81db0 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 2 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== 2 \"radius\" 1 1 Default \"edge\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This\n// averages each pixel with its neighbours, but only those at about the same depth, so the\n// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth\n// (sky) only average with each other.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float kc = key(depth(pos.x, pos.y).x);\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise 658ba452864882b2db0d295ffa9ea6ce5c81b09f87db3d7136dd70dc120b39f3 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 3 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== \"antialias\" Float 1 AACAPw== 3 \"radius\" 1 1 Default \"edge\" 1 1 Default \"antialias\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away\n// from depth edges this averages each pixel with its neighbours at about the same depth, so\n// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain\n// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it\n// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own\n// antialiased edge does. Pixels with no depth (sky) count as infinitely far.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n  float antialias;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n    defineParam(antialias, \"antialias\", 1.0f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    float kc = key(depth(pos.x, pos.y).x);\n\n    // Near a depth edge: blend across it.\n    int a = int(antialias + 0.5f);\n    if (a > 0) \{\n      bool atEdge = false;\n      for (int dy = -a; dy <= a && !atEdge; dy++)\n        for (int dx = -a; dx <= a; dx++)\n          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) \{\n            atEdge = true;\n            break;\n          \}\n      if (atEdge) \{\n        float s2 = 0.5f * antialias * antialias + 0.25f;\n        float4 sum = float4(0.0f);\n        float wsum = 0.0f;\n        for (int dy = -a; dy <= a; dy++)\n          for (int dx = -a; dx <= a; dx++) \{\n            float w = exp(-(dx * dx + dy * dy) / s2);\n            sum += src(pos.x + dx, pos.y + dy) * w;\n            wsum += w;\n          \}\n        dst() = sum / wsum;\n        return;\n      \}\n    \}\n\n    // Elsewhere: smooth only between pixels at about the same depth.\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeSmooth_radius {{"parent.smooth * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
+  EzDepthHazeSmooth_antialias {{"parent.edge_antialias * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
   rebuild_finalise ""
   name Smooth_sky
   xpos -60
@@ -872,13 +876,13 @@ push $N227800
   xpos -60
   ypos -50
  }
-set N4482d000 [stack 0]
-push $N25e000
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N7fc3d000 [stack 0]
+push $N2870e000
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -950,10 +954,11 @@ push $N227800
  BlinkScript {
   inputs 2
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise d0c0093d3d8e2d728558dceeafce3ea8e06a886a21592e8de14e280d8fd81db0 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 2 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== 2 \"radius\" 1 1 Default \"edge\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This\n// averages each pixel with its neighbours, but only those at about the same depth, so the\n// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth\n// (sky) only average with each other.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float kc = key(depth(pos.x, pos.y).x);\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise 658ba452864882b2db0d295ffa9ea6ce5c81b09f87db3d7136dd70dc120b39f3 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 3 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== \"antialias\" Float 1 AACAPw== 3 \"radius\" 1 1 Default \"edge\" 1 1 Default \"antialias\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away\n// from depth edges this averages each pixel with its neighbours at about the same depth, so\n// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain\n// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it\n// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own\n// antialiased edge does. Pixels with no depth (sky) count as infinitely far.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n  float antialias;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n    defineParam(antialias, \"antialias\", 1.0f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    float kc = key(depth(pos.x, pos.y).x);\n\n    // Near a depth edge: blend across it.\n    int a = int(antialias + 0.5f);\n    if (a > 0) \{\n      bool atEdge = false;\n      for (int dy = -a; dy <= a && !atEdge; dy++)\n        for (int dx = -a; dx <= a; dx++)\n          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) \{\n            atEdge = true;\n            break;\n          \}\n      if (atEdge) \{\n        float s2 = 0.5f * antialias * antialias + 0.25f;\n        float4 sum = float4(0.0f);\n        float wsum = 0.0f;\n        for (int dy = -a; dy <= a; dy++)\n          for (int dx = -a; dx <= a; dx++) \{\n            float w = exp(-(dx * dx + dy * dy) / s2);\n            sum += src(pos.x + dx, pos.y + dy) * w;\n            wsum += w;\n          \}\n        dst() = sum / wsum;\n        return;\n      \}\n    \}\n\n    // Elsewhere: smooth only between pixels at about the same depth.\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeSmooth_radius {{"parent.smooth * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
+  EzDepthHazeSmooth_antialias {{"parent.edge_antialias * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
   rebuild_finalise ""
   name Smooth_sun
   xpos -180
@@ -969,7 +974,7 @@ push $N227800
   xpos -180
   ypos -50
  }
-set N4482c000 [stack 0]
+set N7fc3c000 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -977,7 +982,7 @@ set N4482c000 [stack 0]
   name InScatter
   xpos 0
  }
-set N448bfc00 [stack 0]
+set N7fcd1c00 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -986,14 +991,14 @@ set N448bfc00 [stack 0]
   xpos 240
   ypos 40
  }
-set N4490a800 [stack 0]
-push $N4482c000
-push $N25e000
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N1faa800 [stack 0]
+push $N7fc3c000
+push $N2870e000
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -1065,10 +1070,11 @@ push $N227800
  BlinkScript {
   inputs 2
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise d0c0093d3d8e2d728558dceeafce3ea8e06a886a21592e8de14e280d8fd81db0 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 2 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== 2 \"radius\" 1 1 Default \"edge\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This\n// averages each pixel with its neighbours, but only those at about the same depth, so the\n// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth\n// (sky) only average with each other.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float kc = key(depth(pos.x, pos.y).x);\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise 658ba452864882b2db0d295ffa9ea6ce5c81b09f87db3d7136dd70dc120b39f3 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 3 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== \"antialias\" Float 1 AACAPw== 3 \"radius\" 1 1 Default \"edge\" 1 1 Default \"antialias\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away\n// from depth edges this averages each pixel with its neighbours at about the same depth, so\n// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain\n// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it\n// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own\n// antialiased edge does. Pixels with no depth (sky) count as infinitely far.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n  float antialias;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n    defineParam(antialias, \"antialias\", 1.0f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    float kc = key(depth(pos.x, pos.y).x);\n\n    // Near a depth edge: blend across it.\n    int a = int(antialias + 0.5f);\n    if (a > 0) \{\n      bool atEdge = false;\n      for (int dy = -a; dy <= a && !atEdge; dy++)\n        for (int dx = -a; dx <= a; dx++)\n          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) \{\n            atEdge = true;\n            break;\n          \}\n      if (atEdge) \{\n        float s2 = 0.5f * antialias * antialias + 0.25f;\n        float4 sum = float4(0.0f);\n        float wsum = 0.0f;\n        for (int dy = -a; dy <= a; dy++)\n          for (int dx = -a; dx <= a; dx++) \{\n            float w = exp(-(dx * dx + dy * dy) / s2);\n            sum += src(pos.x + dx, pos.y + dy) * w;\n            wsum += w;\n          \}\n        dst() = sum / wsum;\n        return;\n      \}\n    \}\n\n    // Elsewhere: smooth only between pixels at about the same depth.\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeSmooth_radius {{"parent.smooth * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
+  EzDepthHazeSmooth_antialias {{"parent.edge_antialias * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
   rebuild_finalise ""
   name Smooth_sun_free
   xpos 60
@@ -1091,16 +1097,16 @@ push $N227800
   name ShadowLoss
   xpos 120
  }
-set N4490a000 [stack 0]
-push $N4482d000
-push $N4482c000
-push $N448bfc00
-push $N25e000
-push $N226c00
-push $N227400
-push $N227000
-push $N25e000
-push $N227800
+set N1faa000 [stack 0]
+push $N7fc3d000
+push $N7fc3c000
+push $N7fcd1c00
+push $N2870e000
+push $N286d6c00
+push $N286d7400
+push $N286d7000
+push $N2870e000
+push $N286d7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -1172,10 +1178,11 @@ push $N227800
  BlinkScript {
   inputs 2
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise d0c0093d3d8e2d728558dceeafce3ea8e06a886a21592e8de14e280d8fd81db0 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 2 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== 2 \"radius\" 1 1 Default \"edge\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeSmooth: a depth-aware blur for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. This\n// averages each pixel with its neighbours, but only those at about the same depth, so the\n// grain melts while ridge lines and other depth edges stay sharp. Pixels with no depth\n// (sky) only average with each other.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float kc = key(depth(pos.x, pos.y).x);\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeSmooth\" iterate pixelWise 658ba452864882b2db0d295ffa9ea6ce5c81b09f87db3d7136dd70dc120b39f3 3 \"src\" Read Random \"depth\" Read Random \"dst\" Write Point 3 \"radius\" Float 1 AAAAQA== \"edge\" Float 1 j8L1PA== \"antialias\" Float 1 AACAPw== 3 \"radius\" 1 1 Default \"edge\" 1 1 Default \"antialias\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeSmooth: grain smoothing and edge antialiasing for EzDepthHaze's haze passes.\n//\n// The haze is smooth by nature; what grain it has comes from the per-pixel sampling. Away\n// from depth edges this averages each pixel with its neighbours at about the same depth, so\n// the grain melts while ridge lines stay sharp. Right at a depth edge that leaves the grain\n// and the stair-stepping of the depth itself, so within `antialias` pixels of an edge it\n// blends across it instead (like a small 3x3 blur, 1x to 3x), as the plate's own\n// antialiased edge does. Pixels with no depth (sky) count as infinitely far.\n//\n// Inputs: `src` the pass to smooth, `depth` with the raw depth in red (as EzDepthHaze reads it).\n\nkernel EzDepthHazeSmooth : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessRandom, eEdgeClamped> src;\n  Image<eRead, eAccessRandom, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float radius;\n  float edge;\n  float antialias;\n\n  void define()\n  \{\n    defineParam(radius, \"radius\", 2.0f);\n    defineParam(edge, \"edge\", 0.03f);\n    defineParam(antialias, \"antialias\", 1.0f);\n  \}\n\n  float key(float d)\n  \{\n    // Depth on a log scale, so \"about the same depth\" means the same ratio near and far.\n    return d > 0.0f ? log(d) : 1e6f;\n  \}\n\n  void process(int2 pos)\n  \{\n    float kc = key(depth(pos.x, pos.y).x);\n\n    // Near a depth edge: blend across it.\n    int a = int(antialias + 0.5f);\n    if (a > 0) \{\n      bool atEdge = false;\n      for (int dy = -a; dy <= a && !atEdge; dy++)\n        for (int dx = -a; dx <= a; dx++)\n          if (fabs(key(depth(pos.x + dx, pos.y + dy).x) - kc) > edge * 3.0f) \{\n            atEdge = true;\n            break;\n          \}\n      if (atEdge) \{\n        float s2 = 0.5f * antialias * antialias + 0.25f;\n        float4 sum = float4(0.0f);\n        float wsum = 0.0f;\n        for (int dy = -a; dy <= a; dy++)\n          for (int dx = -a; dx <= a; dx++) \{\n            float w = exp(-(dx * dx + dy * dy) / s2);\n            sum += src(pos.x + dx, pos.y + dy) * w;\n            wsum += w;\n          \}\n        dst() = sum / wsum;\n        return;\n      \}\n    \}\n\n    // Elsewhere: smooth only between pixels at about the same depth.\n    int r = int(radius + 0.5f);\n    if (r <= 0) \{\n      dst() = src(pos.x, pos.y);\n      return;\n    \}\n    float sigma2 = 2.0f * (radius * 0.6f) * (radius * 0.6f);\n    float4 sum = float4(0.0f);\n    float wsum = 0.0f;\n    for (int dy = -r; dy <= r; dy++) \{\n      for (int dx = -r; dx <= r; dx++) \{\n        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;\n        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);\n        sum += src(pos.x + dx, pos.y + dy) * w;\n        wsum += w;\n      \}\n    \}\n    dst() = sum / wsum;\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeSmooth_radius {{"parent.smooth * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
+  EzDepthHazeSmooth_antialias {{"parent.edge_antialias * (\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1)"}}
   rebuild_finalise ""
   name Smooth_transmittance
   xpos -300
@@ -1191,21 +1198,21 @@ push $N227800
   xpos -300
   ypos -50
  }
-set N25f000 [stack 0]
-push $N448bf400
-push $N448be800
-push $N4490b000
-push $N4490b400
-push $N4490ac00
-push $N4490a800
-push $N4490a000
-push $N4482d000
-push $N4482c000
-push $N448bfc00
-push $N25f000
-push $N448bfc00
-push $N25f000
-push $N4490b400
+set N2870f000 [stack 0]
+push $N7fcd1400
+push $N7fcd0800
+push $N1fab000
+push $N1fab400
+push $N1faac00
+push $N1faa800
+push $N1faa000
+push $N7fc3d000
+push $N7fc3c000
+push $N7fcd1c00
+push $N2870f000
+push $N7fcd1c00
+push $N2870f000
+push $N1fab400
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -1213,7 +1220,7 @@ push $N4490b400
   xpos 600
   ypos 40
  }
-push $N1a4000
+push $N28654000
  Merge2 {
   inputs 2
   operation plus
@@ -1245,7 +1252,7 @@ push $N1a4000
   xpos 0
   ypos 200
  }
-push $N1a4000
+push $N28654000
  Copy {
   inputs 2
   channels rgb
