@@ -86,3 +86,10 @@ def preset_tooltip():
 REFERENCE = {"dist": [6496.5, 10173.3, 38953.5],
              "alt": [1634.9, 1834.3, 1985.2, 2119.1, 2236.5, 2363.8, 2421.3, 2546.0, 2669.7, 2814.6, 3111.4],
              "tau": 0.173031, "camera": 4300.0, "sky_distance": 250.0}
+
+# Where easy mode saves and finds looks. Change the paths here (and rebuild), or set the
+# environment variables, which win.
+LOOK_DIRS = {
+    "User": {"env": "EZHAZE_USER_LOOKS", "path": "~/.nuke/ezdepthhaze_looks"},
+    "Studio": {"env": "EZHAZE_STUDIO_LOOKS", "path": ""},
+}

@@ -71,9 +71,35 @@ channel of the plate and adds the layers listed under Layers below.
 | max distance (km) | 0 | Caps the hazed distance (0 = off) |
 | atmos rotation | 0 | Rotation of the atmos lat-long, when not inheriting |
 
+## Easy mode
+
+The node opens on its **Easy** tab:
+
+- **Looks**: a button per preset. *refresh looks* renders a small picture (160 pixels
+  wide) of every look on the current frame onto the buttons; it uses a temporary copy of
+  the node on a downsized plate and deletes it afterwards. Clicking a look applies it,
+  fitted to the shot (see Presets).
+- **look strength**: from clear air (0) to the full look (1).
+- **haze**, **warmth**, **glow**, **shafts**, **fog**, **fog height** and **texture**:
+  big sliders, each driving the knobs underneath (haze amount; haze tint; sun scatter;
+  shadow strength; fog density; fog top, in steps of the terrain's height range; noise
+  amount). They are relative to the look as applied, so the middle is always the look.
+- **surprise me** picks random adjustments within tasteful limits; **reset** centres
+  the sliders; **before** shows the plate without haze.
+- **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*.
+  *saved looks* lists both folders; picking one loads it.
+- **advanced** shows every knob, set to what Easy did, to fine-tune. Turning it off
+  again starts Easy from your tuned values, with the sliders centred.
+
+Looks are JSON files in the User folder (`~/.nuke/ezdepthhaze_looks`, or
+`$EZHAZE_USER_LOOKS`) or the Studio folder (`$EZHAZE_STUDIO_LOOKS`). The default paths are
+at the bottom of `python/ezdepthhaze.py`; change them there and rebuild. Easy mode only
+reacts to changes made in the open panel, so loading or rendering a script never changes
+a knob.
+
 ## Presets
 
-Pick a look in *preset* and it is applied straight away, fitted to the shot (see below);
+Pick a look (the *look* menu or a look button) and it is applied straight away, fitted to the shot (see below);
 every knob stays editable. *apply* applies it again, for example after connecting the plate
 and camera, or to undo your tweaks. A short summary pops up, and when the EzAtmosScatter
 sun is far from where the look wants it, it asks whether to move it there (sun direction

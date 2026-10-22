@@ -21,6 +21,8 @@ import nuke
 PRESETS = {}  # filled in by build_gizmo.py
 # The demo's measurements (measure() on the demo scene); see python/build_gizmo.py.
 REFERENCE = {}
+# What the last fit measured, for easy mode.
+LAST_FIT = {}
 
 
 def _pct(values, p):
@@ -214,6 +216,8 @@ def fit(n, name=None):
     st = _stats(m, threshold)
 
     scale = st["dist"][1] / ref["dist"][1]
+    # Easy mode moves the fog height in steps of the terrain's altitude range.
+    LAST_FIT["relief"] = max(st["alt"][9] - st["alt"][1], 1.0)
     relief = max(st["alt"][9] - st["alt"][1], 1.0) / max(ref["alt"][9] - ref["alt"][1], 1.0)
     knobs = dict(preset["knobs"])
     knobs["haze_amount"] = preset["knobs"]["haze_amount"] * ref["tau"] / max(st["tau"], 1e-12)

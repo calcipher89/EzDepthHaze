@@ -9,6 +9,7 @@ and an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
 atmos_haze_color layer lights the haze and whose haze settings can be inherited.
 """
 
+import base64
 import os
 import sys
 
@@ -62,33 +63,151 @@ def _double(name, label, lo, hi, tip, value):
     return knob, value
 
 
-def _apply_code():
-    """python/fit_to_shot.py with the presets and the demo's measurements filled in, so the
-    gizmo needs no Python module at run time. python/ezdepthhaze.py is where the values are
-    edited."""
+def _tool_code():
+    """python/fit_to_shot.py and python/easy_mode.py with the presets, the demo's measurements
+    and the look folders filled in. It is stored once on the node (the hidden tool_code knob)
+    and run from there by the buttons and knobChanged, so the gizmo needs no Python module at
+    run time. python/ezdepthhaze.py is where the values are edited."""
     presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
                            "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
                    for name, p in ezdepthhaze.PRESETS)
+    look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
+                        {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
+                         "shadow_distance", "match_distance"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
-    return code.replace("REFERENCE = {}", "REFERENCE = %r" % ezdepthhaze.REFERENCE)
+    code = code.replace("REFERENCE = {}", "REFERENCE = %r" % ezdepthhaze.REFERENCE)
+    with open(os.path.join(ROOT, "python", "easy_mode.py")) as f:
+        easy = f.read()
+    easy = easy.replace("LOOK_DIRS = {}", "LOOK_DIRS = %r" % ezdepthhaze.LOOK_DIRS)
+    easy = easy.replace("LOOK_KNOBS = []", "LOOK_KNOBS = %r" % look_knobs)
+    return code + "\n\n" + easy
 
 
-def _apply_script():
-    # The apply button: re-fit the picked preset, e.g. after connecting the inputs. The code
-    # runs in its own namespace so its functions can call each other.
-    return "d = {}\nexec(%r, d)\nd['apply_preset'](nuke.thisNode())\n" % _apply_code()
+# Runs the node's tool code in its own namespace (so its functions can call each other).
+_RUN = "n = nuke.thisNode()\nd = {}\nexec(__import__('base64').b64decode(n['tool_code'].value()).decode(), d)\n"
+
+
+def _button(call):
+    return _RUN + "try:\n    %s\nexcept ValueError as e:\n    d['easy_message'](str(e))\n" % call
 
 
 def _knob_changed_script():
-    # Picking a preset in the open panel applies it straight away, fitted to the shot. Only
-    # then: knobChanged also runs while a script loads (and on the farm), where it must not
-    # reset the knobs an artist tuned.
-    return ("if nuke.thisKnob().name() == 'preset' and nuke.GUI and nuke.thisNode().shown():\n"
+    # Only from the open panel: knobChanged also runs while a script loads (and on the farm),
+    # where it must not reset the knobs an artist tuned.
+    return ("k = nuke.thisKnob().name()\n"
+            "n = nuke.thisNode()\n"
+            "if k == 'showPanel' and n.knob('tool_code'):\n"
             "    d = {}\n"
-            "    exec(%r, d)\n"
-            "    d['apply_preset'](nuke.thisNode())\n" % _apply_code())
+            "    exec(__import__('base64').b64decode(n['tool_code'].value()).decode(), d)\n"
+            "    d['set_advanced'](n, False)\n"
+            "    d['refresh_look_menu'](n)\n"
+            "elif k in %r and nuke.GUI and n.shown():\n"
+            "    d = {}\n"
+            "    exec(__import__('base64').b64decode(n['tool_code'].value()).decode(), d)\n"
+            "    if k == 'preset':\n"
+            "        d['apply_look'](n)\n"
+            "    elif k == 'advanced':\n"
+            "        d['set_advanced'](n)\n"
+            "    elif k == 'my_looks':\n"
+            "        d['load_look'](n)\n"
+            "    else:\n"
+            "        d['apply_easy'](n)\n"
+            % (["preset", "advanced", "my_looks", "look_strength", "easy_haze", "easy_warmth", "easy_glow",
+                "easy_shafts", "easy_fog", "easy_fog_height", "easy_texture"],))
+
+
+def _on_create_script():
+    # Hide the advanced knobs again on load when the node was saved in easy mode.
+    return ("n = nuke.thisNode()\n"
+            "if n.knob('tool_code') and not n['advanced'].value():\n"
+            "    d = {}\n"
+            "    exec(__import__('base64').b64decode(n['tool_code'].value()).decode(), d)\n"
+            "    d['set_advanced'](n, False)\n")
+
+
+def _add_easy_knobs(add):
+    add(nuke.Tab_Knob("easy", "Easy"))
+    add(nuke.Text_Knob("looks_divider", "Looks"))
+    for i, name in enumerate(ezdepthhaze.PRESET_NAMES):
+        look = nuke.PyScript_Knob("look_%d" % i, name, _button(
+            "if n['preset'].value() != %r:\n        n['preset'].setValue(%r)\n    else:\n"
+            "        d['apply_look'](n)" % (name, name)))
+        look.setTooltip("Apply %s, fitted to this shot." % name)
+        add(look)
+    refresh = nuke.PyScript_Knob("refresh_looks", "refresh looks", _button("d['render_thumbnails'](n)"))
+    refresh.setTooltip("Renders a small picture of every look on this frame onto the buttons above. The "
+                       "pictures are 160 pixels wide and the temporary nodes are deleted afterwards.")
+    refresh.setFlag(nuke.STARTLINE)
+    add(refresh)
+    preset = nuke.Enumeration_Knob("preset", "look", ezdepthhaze.PRESET_NAMES)
+    preset.setTooltip("A starting look, applied as soon as you pick it and fitted to this shot: the depth and "
+                      "camera are measured at this frame and haze amount, fog height, noise and distances are "
+                      "scaled to match the demo the presets were tuned on. Afterwards it offers to move the "
+                      "EzAtmosScatter sun to where the look wants it:\n" + ezdepthhaze.preset_tooltip())
+    preset.setFlag(nuke.STARTLINE)
+    add(preset, 1)
+    apply = nuke.PyScript_Knob("apply_preset", "apply", _button("d['apply_look'](n)"))
+    apply.setTooltip("Applies the look again, fitted to the shot: e.g. after connecting the plate and camera, "
+                     "or to start over.")
+    add(apply)
+    strength = nuke.Double_Knob("look_strength", "look strength")
+    strength.setRange(0, 1)
+    strength.setTooltip("From clear air (0) to the full look (1).")
+    add(strength, 1.0)
+    add(nuke.Text_Knob("adjust_divider", "Adjust"))
+    for name, label, lo, hi, value, tip in [
+            ("easy_haze", "haze", 0, 3, 1.0, "How thick the haze is."),
+            ("easy_warmth", "warmth", -1, 1, 0.0, "Cooler (blue) to warmer (orange) haze light."),
+            ("easy_glow", "glow", 0, 3, 1.0, "How bright the sunlit haze is, around and towards the sun."),
+            ("easy_shafts", "shafts", 0, 2, 1.0, "How strongly the terrain shadows the haze: 0 is no shafts."),
+            ("easy_fog", "fog", 0, 3, 1.0, "How dense the valley fog is."),
+            ("easy_fog_height", "fog height", -1, 1, 0.0,
+             "Lower or raise the fog, in steps of the terrain's height range."),
+            ("easy_texture", "texture", 0, 3, 1.0, "How much the noise breaks up the haze and fog.")]:
+        knob = nuke.Double_Knob(name, label)
+        knob.setRange(lo, hi)
+        knob.setTooltip(tip)
+        add(knob, value)
+    surprise = nuke.PyScript_Knob("surprise_me", "surprise me", _button("d['surprise'](n)"))
+    surprise.setTooltip("Random adjustments within tasteful limits.")
+    surprise.setFlag(nuke.STARTLINE)
+    add(surprise)
+    reset = nuke.PyScript_Knob("reset_easy", "reset", _button("d['reset_sliders'](n)"))
+    reset.setTooltip("Centres the sliders, back to the look as applied.")
+    add(reset)
+    before = nuke.Boolean_Knob("show_before", "before")
+    before.setTooltip("Shows the plate without haze, to compare.")
+    add(before)
+    add(nuke.Text_Knob("save_divider", "My Looks"))
+    looks = nuke.Enumeration_Knob("my_looks", "saved looks", ["(no saved looks)"])
+    looks.setTooltip("Looks saved by you (User) or shared by the studio (Studio). Picking one loads it.")
+    add(looks)
+    name = nuke.String_Knob("look_name", "name")
+    add(name)
+    where = nuke.Enumeration_Knob("save_to", "save to", ["User", "Studio"])
+    where.clearFlag(nuke.STARTLINE)
+    where.setTooltip("User: %s (or $%s). Studio: $%s, set by your pipeline. The folders are set in "
+                     "python/ezdepthhaze.py." % (ezdepthhaze.LOOK_DIRS["User"]["path"],
+                                                  ezdepthhaze.LOOK_DIRS["User"]["env"],
+                                                  ezdepthhaze.LOOK_DIRS["Studio"]["env"]))
+    add(where)
+    save = nuke.PyScript_Knob("save_look", "save look", _button("d['easy_message']('Saved ' + d['save_look'](n))"))
+    save.clearFlag(nuke.STARTLINE)
+    add(save)
+    advanced = nuke.Boolean_Knob("advanced", "advanced")
+    advanced.setTooltip("Shows every knob, set to what Easy did, to fine-tune. Turning it off again starts Easy "
+                        "from your tuned values.")
+    advanced.setFlag(nuke.STARTLINE)
+    add(advanced)
+    base = nuke.String_Knob("easy_base", "easy base")
+    base.setFlag(nuke.INVISIBLE)
+    add(base)
+    # Base64, so no Tcl substitution or script escaping can touch the Python inside.
+    code = nuke.String_Knob("tool_code", "tool code")
+    code.setFlag(nuke.INVISIBLE)
+    add(code, base64.b64encode(_tool_code().encode()).decode())
 
 
 def _add_knobs(group, depth_pick, env_pick):
@@ -100,18 +219,8 @@ def _add_knobs(group, depth_pick, env_pick):
         if value is not None:
             defaults[knob.name()] = value
 
-    add(nuke.Tab_Knob("ezdepthhaze", "EzDepthHaze"))
-    preset = nuke.Enumeration_Knob("preset", "preset", ezdepthhaze.PRESET_NAMES)
-    preset.setTooltip("A starting look, applied as soon as you pick it and fitted to this shot: the depth and "
-                      "camera are measured at this frame and haze amount, fog height, noise and distances are "
-                      "scaled to match the demo the presets were tuned on. Every knob stays editable afterwards. "
-                      "Afterwards it offers to move the EzAtmosScatter sun to where the look wants it:\n"
-                      + ezdepthhaze.preset_tooltip())
-    add(preset, 1)
-    apply = nuke.PyScript_Knob("apply_preset", "apply", _apply_script())
-    apply.setTooltip("Applies the picked preset again, fitted to the shot: e.g. after connecting the plate and "
-                     "camera, or to undo your tweaks.")
-    add(apply)
+    _add_easy_knobs(add)
+    add(nuke.Tab_Knob("ezdepthhaze", "Advanced"))
     view = nuke.Enumeration_Knob("view_output", "view output", [label for label, _ in VIEW_OUTPUTS])
     view.setTooltip("What the main rgb shows. Every pass is also written to its own layer: plate * "
                     "haze_transmittance + haze_sun + haze_sky (+ surface_sunlight * T when added) = result.")
@@ -261,6 +370,7 @@ def _add_knobs(group, depth_pick, env_pick):
     for name, value in defaults.items():
         group[name].setValue(value)
     group["knobChanged"].setValue(_knob_changed_script())
+    group["onCreate"].setValue(_on_create_script())
 
 
 def _link_haze(node, output):
@@ -491,6 +601,12 @@ def build():
             copy["from%d" % c].setValue("rgba." + channel)
             copy["to%d" % c].setValue("%s.%s" % (layer, channel))
         stream = copy
+    # Before / after: the plate as it came in, to compare.
+    before = nuke.nodes.Switch(name="BeforeAfter", xpos=0, ypos=320 + 40 * len(layer_sources))
+    before.setInput(0, stream)
+    before.setInput(1, plate)
+    before["which"].setExpression("parent.show_before")
+    stream = before
     out = nuke.nodes.Output(xpos=0, ypos=320 + 40 * len(layer_sources) + 40)
     out.setInput(0, stream)
     group.end()
