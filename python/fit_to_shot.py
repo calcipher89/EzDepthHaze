@@ -1,5 +1,7 @@
 """Fit to shot: apply a preset scaled to the shot in the node's inputs.
-
+    # Only when the frame has no sky of its own yet: a dome or card standing in for it.
+    open_sky = m["pixels"] - len([x for x in m["raw"] if x < threshold])
+    if m["depth_type"] != 2 and open_sky < 0.02 * m["pixels"]:
 The presets were tuned on the demo (terrain 6-130 km away, camera 4.3 km up). This measures
 the shot's depth and camera at the current frame, the same way the kernel reads them, and
 sets the preset's knobs relative to it:
@@ -106,20 +108,28 @@ def measure(n, grid=(48, 27)):
 
 
 def find_backdrop(raw, threshold):
-    """A raw sky depth that splits off a far backdrop, or None.
+    """A raw sky depth that splits off a far backdrop (a skydome or a card), or None.
 
-    Looks for the widest gap (as a ratio) in the sorted depths past the nearest tenth; a backdrop
-    is far further than the terrain in front of it, with nothing in between."""
-    v = sorted(x for x in raw if x < threshold)
-    if len(v) < 20:
+    A backdrop is the farthest group of depths, tightly bunched (a dome around the camera,
+    or a card), with a clear gap to the terrain in front of it. Edge pixels that blend the
+    two sit inside that gap, so a few of them are allowed there."""
+    v = sorted(x for x in raw if 0 < x < threshold)
+    n = len(v)
+    if n < 20:
         return None
+    stray = max(2, n // 100)
     best, at = 1.0, None
-    for i in range(len(v) // 10, len(v) - 1):
-        if v[i] > 0 and v[i + 1] / v[i] > best:
-            best, at = v[i + 1] / v[i], i
-    if at is None or best < 3.0 or len(v) - 1 - at < 0.02 * len(v):
+    for i in range(n // 10, n - stray - 1):
+        far = v[i + stray + 1:]
+        # The group past the gap: at least 2% of the frame, and bunched (a dome, not terrain).
+        if len(far) < 0.02 * n or far[-1] / far[0] > 1.6:
+            continue
+        gap = v[i + stray + 1] / v[i]
+        if gap > best:
+            best, at = gap, i
+    if at is None or best < 1.5:
         return None
-    return math.sqrt(v[at] * v[at + 1])
+    return math.sqrt(v[at] * v[at + stray + 1])
 
 
 def _stats(m, threshold):
@@ -216,7 +226,9 @@ def fit(n, name=None):
 
     threshold = n["sky_threshold"].value()
     backdrop = None
-    if m["depth_type"] != 2:
+    # Only when the frame has no open sky of its own: then a dome or card stands in for it.
+    open_sky = m["pixels"] - len([x for x in m["raw"] if x < threshold])
+    if m["depth_type"] != 2 and open_sky < 0.02 * m["pixels"]:
         backdrop = find_backdrop(m["raw"], threshold)
         if backdrop is not None:
             threshold = backdrop

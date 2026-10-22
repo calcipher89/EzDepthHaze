@@ -29,6 +29,7 @@ param:
   float terrainHeight;
   float terrainScale;
   float seed;
+  float seaLevel;
 
 local:
   float pi;
@@ -51,6 +52,7 @@ local:
     defineParam(terrainHeight, "terrain_height", 2600.0f);
     defineParam(terrainScale, "terrain_scale", 9000.0f);
     defineParam(seed, "seed", 2.0f);
+    defineParam(seaLevel, "sea_level", -1e9f);
   }
 
   void init()
@@ -103,6 +105,12 @@ local:
     return terrainHeight * (0.08f + 0.72f * ranges + 0.28f * detail * (0.3f + ranges));
   }
 
+  // Terrain with water filling everything below sea_level (off by default).
+  float surface(float x, float z, int octaves)
+  {
+    return max(height(x, z, octaves), seaLevel);
+  }
+
   float3 skyLookup(float3 d)
   {
     float lon = atan2(d.x, -d.z);
@@ -127,7 +135,7 @@ local:
     bool hit = false;
     for (int i = 0; i < 1200; i++) {
       float3 p = camPosition + dir * t;
-      float dy = p.y - height(p.x, p.z, 7);
+      float dy = p.y - surface(p.x, p.z, 7);
       if (dy < 0.001f * t) {
         hit = true;
         break;
@@ -164,15 +172,15 @@ local:
     for (int i = 0; i < 10; i++) {
       float tm = 0.5f * (t + tPrev);
       float3 pm = camPosition + dir * tm;
-      if (pm.y - height(pm.x, pm.z, 7) < 0.0f)
+      if (pm.y - surface(pm.x, pm.z, 7) < 0.0f)
         t = tm;
       else
         tPrev = tm;
     }
     float3 p = camPosition + dir * t;
     float e = 4.0f + 0.002f * t;
-    float hx = height(p.x + e, p.z, 7) - height(p.x - e, p.z, 7);
-    float hz = height(p.x, p.z + e, 7) - height(p.x, p.z - e, 7);
+    float hx = surface(p.x + e, p.z, 7) - surface(p.x - e, p.z, 7);
+    float hz = surface(p.x, p.z + e, 7) - surface(p.x, p.z - e, 7);
     float3 n = normalize(float3(-hx, 2.0f * e, -hz));
 
     // Soft shadow from the terrain towards the sun.
@@ -180,7 +188,7 @@ local:
     float s = 30.0f;
     for (int i = 0; i < 80; i++) {
       float3 q = p + sunDir * s;
-      float dq = q.y - height(q.x, q.z, 5);
+      float dq = q.y - surface(q.x, q.z, 5);
       shadow = min(shadow, clamp(8.0f * dq / s, 0.0f, 1.0f));
       if (shadow <= 0.0f || q.y > terrainHeight * 1.2f)
         break;
@@ -191,10 +199,20 @@ local:
     float3 grass = float3(0.07f, 0.08f, 0.045f);
     float3 rock = float3(0.11f, 0.1f, 0.09f);
     float3 albedo = grass + (rock - grass) * clamp(slope * 2.5f, 0.0f, 1.0f);
+    bool water = p.y <= seaLevel + 0.5f;
+    if (water) {
+      // Dark water with a little of the sky reflected in it.
+      n = float3(0.0f, 1.0f, 0.0f);
+      albedo = float3(0.02f, 0.03f, 0.035f);
+    }
     float3 skyUp = skyLookup(float3(0.0f, 1.0f, 0.0f));
     float3 skyHorizon = skyLookup(normalize(float3(-sunDir.x, 0.05f, -sunDir.z)));
     float3 ambient = (skyUp * (0.5f + 0.5f * n.y) + skyHorizon * 0.3f) * ambientStrength;
     float3 lit = albedo * (sunColor * sunIntensity * max(dot(n, sunDir), 0.0f) * shadow / pi + ambient);
+    if (water) {
+      float3 r = skyLookup(float3(dir.x, -dir.y, dir.z));
+      lit += r * (0.02f + 0.3f * pow(1.0f - fabs(dir.y), 5.0f));
+    }
     dst() = float4(lit.x, lit.y, lit.z, t);
   }
 };
