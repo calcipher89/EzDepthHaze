@@ -31,7 +31,7 @@ def _value(n, name):
     return list(v) if isinstance(v, (list, tuple)) else v
 
 
-def rebase(n, relief=None):
+def rebase(n, relief=None, centre=True):
     """Make the advanced knobs' current values the base, and centre the sliders."""
     base = dict((k, _value(n, k)) for k in LOOK_KNOBS if n.knob(k))
     old = {}
@@ -47,9 +47,10 @@ def rebase(n, relief=None):
     if relief:
         base["relief"] = relief
     n["easy_base"].setValue(json.dumps(base))
-    for name, neutral, _ in SLIDERS:
-        n[name].setValue(neutral)
-    n["look_strength"].setValue(1.0)
+    if centre:
+        for name, neutral, _ in SLIDERS:
+            n[name].setValue(neutral)
+        n["look_strength"].setValue(1.0)
 
 
 def apply_easy(n):
@@ -63,7 +64,15 @@ def apply_easy(n):
     except ValueError:
         b = {}
     if not b or "scale" not in b:
-        rebase(n)
+        # No look applied yet (a fresh node shows a look in its menu but still holds the
+        # node's defaults): apply the shown look, fitted to the shot, then adjust it, keeping
+        # the slider the artist just moved.
+        LAST_FIT.clear()
+        try:
+            fit(n)
+        except ValueError:
+            _plain(n, PRESETS[n["preset"].value()])
+        rebase(n, centre=False)
         b = json.loads(n["easy_base"].value())
     s = n["look_strength"].value()
     e = dict((name, n[name].value()) for name, _, _ in SLIDERS)
