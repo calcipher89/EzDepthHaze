@@ -47,7 +47,7 @@ def _camera(n):
 
 def _effective(n, name, fallback):
     """A haze setting as the kernel sees it: from the atmos input when inheriting."""
-    atmos = n.input(2)
+    atmos = _atmos(n)
     if n["inherit_atmos"].value() and atmos is not None and atmos.knob(name):
         return atmos[name]
     return n[fallback]

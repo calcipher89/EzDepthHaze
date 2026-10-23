@@ -65,8 +65,45 @@ def _link_camera_knobs(group):
         group["cam_" + name].setExpression(
             "[python -execlocal {%sret = c['%s'].getValueAt(nuke.frame()) "
             "if c is not None and c.knob('%s') else %g}]" % (_FIND_CAMERA, name, name, default))
-# Expressions that read a setting from the atmos input when 'inherit from atmos' is on.
-ATMOS = "parent.inherit_atmos && [exists parent.input2.%s] ? parent.input2.%s : %s"
+
+
+# Python that sets `a` to the EzAtmosScatter in the atmos input, through any Dots or NoOps.
+_FIND_ATMOS = ("a = nuke.thisNode().input(2)\n"
+               "while a is not None and not a.knob('haze_density'):\n"
+               "    a = a.input(0) if a.inputs() else None\n")
+# The atmos settings EzDepthHaze can inherit: (hidden knob, knob on the atmos node, channels).
+ATMOS_KNOBS = [("atm_haze_density", "haze_density", 3), ("atm_haze_height", "haze_height", 1),
+               ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_direction", 3)]
+
+
+def _add_atmos_knobs(add):
+    """Hidden knobs holding the atmos node's settings (see _link_atmos_knobs)."""
+    found = nuke.Int_Knob("atm_found", "atmos found")
+    found.setFlag(nuke.INVISIBLE)
+    add(found)
+    for name, _, size in ATMOS_KNOBS:
+        knob = nuke.Double_Knob(name, name) if size == 1 else nuke.XYZ_Knob(name, name)
+        knob.setFlag(nuke.INVISIBLE)
+        add(knob)
+
+
+def _link_atmos_knobs(group):
+    group["atm_found"].setExpression("[python -execlocal {%sret = 1 if a is not None else 0}]" % _FIND_ATMOS)
+    for name, source, size in ATMOS_KNOBS:
+        for i in range(size):
+            pick = ", %d" % i if size > 1 else ""
+            expr = ("[python -execlocal {%sret = a['%s'].getValueAt(nuke.frame()%s) if a is not None else 0}]"
+                    % (_FIND_ATMOS, source, pick))
+            if size > 1:
+                group[name].setExpression(expr, i)
+            else:
+                group[name].setExpression(expr)
+
+
+# Expressions that read a setting from the atmos input when 'inherit from atmos' is on, from
+# the hidden atm_* knobs (so Dots and NoOps in between are fine). Arguments: the atmos knob,
+# that knob with its channel, and the fallback.
+ATMOS = "parent.inherit_atmos && parent.atm_found ? %.0sparent.atm_%s : %s"
 
 
 def _load_kernel(node, filename):
@@ -147,7 +184,7 @@ def _knob_changed_script(look_knobs):
             "    _ezd = {}\n"
             "    exec(__import__('base64').b64decode(n['tool_code'].value()).decode(), _ezd)\n"
             "    _ezd['on_knob'](n, k)\n"
-            % (["preset", "my_looks"] + EASY_SLIDERS + VISIBILITY + list(look_knobs),))
+            % (["preset"] + EASY_SLIDERS + VISIBILITY + list(look_knobs),))
 
 
 def _add_easy_knobs(add):
@@ -188,6 +225,9 @@ def _add_easy_knobs(add):
                    "quarter of the GPU memory and time. Renders from a terminal (the farm) are always Full.")
     res.clearFlag(nuke.STARTLINE)
     add(res, 1)
+    clip = nuke.Enumeration_Knob("clip_to", "clip to", ["format", "bbox", "no clip"])
+    clip.setTooltip("Crops the output to the plate's format, to the plate's bounding box, or not at all.")
+    add(clip)
     smooth = nuke.Double_Knob("smooth", "smooth grain (px)")
     smooth.setRange(0, 6)
     smooth.setTooltip("Averages away the sampling grain in the haze layers, but only between pixels at about "
@@ -251,35 +291,53 @@ def _add_easy_knobs(add):
         knob.setTooltip(tip)
         add(knob, value)
     surprise = nuke.PyScript_Knob("surprise_me", "surprise me", _button("d['surprise'](n)"))
-    surprise.setTooltip("Random adjustments within tasteful limits.")
+    surprise.setTooltip("Random adjustments within tasteful limits; 'surprise strength' sets how far they go.")
     surprise.setFlag(nuke.STARTLINE)
     add(surprise)
+    reach = nuke.Double_Knob("surprise_strength", "surprise strength")
+    reach.setRange(0, 2)
+    reach.setTooltip("How far 'surprise me' moves the sliders from the middle: 0.5 for small nudges, 1 for "
+                     "the usual range, 2 for wild.")
+    reach.clearFlag(nuke.STARTLINE)
+    add(reach, 1.0)
     reset = nuke.PyScript_Knob("reset_easy", "centre sliders", _button("d['reset_sliders'](n)"))
     reset.setTooltip("Centres the sliders, back to the look as applied.")
+    reset.clearFlag(nuke.STARTLINE)
     add(reset)
-    before = nuke.Boolean_Knob("show_before", "before")
-    before.setTooltip("Shows the plate without haze, to compare.")
-    add(before)
     add(nuke.Text_Knob("save_divider", "My Looks"))
     looks = nuke.Enumeration_Knob("my_looks", "saved looks", ["(no saved looks)"])
-    looks.setTooltip("Looks saved by you (User) or shared by the studio (Studio). Picking one loads it.")
+    looks.setTooltip("Looks saved by you (User) or shared by the studio (Studio). Press 'apply look' to use one.")
     add(looks)
+    load = nuke.PyScript_Knob("load_look", "apply look", _button("d['load_look'](n)"))
+    load.setTooltip("Applies the saved look picked in the menu.")
+    load.clearFlag(nuke.STARTLINE)
+    add(load)
     name = nuke.String_Knob("look_name", "name")
     add(name)
     where = nuke.Enumeration_Knob("save_to", "save to", ["User", "Studio"])
     where.clearFlag(nuke.STARTLINE)
-    where.setTooltip("User: %s (or $%s). Studio: $%s, set by your pipeline. The folders are set in "
-                     "python/ezdepthhaze.py." % (ezdepthhaze.LOOK_DIRS["User"]["path"],
-                                                  ezdepthhaze.LOOK_DIRS["User"]["env"],
-                                                  ezdepthhaze.LOOK_DIRS["Studio"]["env"]))
+    where.setTooltip("User or Studio looks folder; both are in the hidden 'user looks folder' and 'studio looks "
+                     "folder' knobs, which a pipeline can set (an environment variable wins when set).")
     add(where)
     save = nuke.PyScript_Knob("save_look", "save look", _button("d['easy_message']('Saved ' + d['save_look'](n))"))
     save.clearFlag(nuke.STARTLINE)
     add(save)
+    remove = nuke.PyScript_Knob("delete_look", "delete look", _button("d['delete_look'](n)"))
+    remove.setTooltip("Deletes the saved look picked in the menu, after asking. A copy is kept in the folder's "
+                      ".backup subfolder.")
+    remove.clearFlag(nuke.STARTLINE)
+    add(remove)
+    # The looks folders, as hidden file knobs so a studio can set them per show (in a knob
+    # default or a script) without Python. $EZHAZE_USER_LOOKS / $EZHAZE_STUDIO_LOOKS still win.
+    for key, label in (("User", "user looks folder"), ("Studio", "studio looks folder")):
+        folder = nuke.File_Knob(key.lower() + "_looks_dir", label)
+        folder.setFlag(nuke.INVISIBLE)
+        add(folder, ezdepthhaze.LOOK_DIRS[key]["path"])
     base = nuke.String_Knob("easy_base", "easy base")
     base.setFlag(nuke.INVISIBLE)
     add(base)
     _add_camera_knobs(add)
+    _add_atmos_knobs(add)
     # Base64, so no Tcl substitution or script escaping can touch the Python inside. Filled in
     # once every knob's default is known (see _add_knobs).
     code = nuke.String_Knob("tool_code", "tool code")
@@ -447,6 +505,7 @@ def _add_knobs(group, depth_pick, env_pick):
     for name, value in defaults.items():
         group[name].setValue(value)
     _link_camera_knobs(group)
+    _link_atmos_knobs(group)
     # Every look knob's starting value, for 'reset look' (the plate settings are left alone).
     keep = {"plate_type", "depth_channel", "depth_type", "depth_scale", "latlong_camera_height", "sky_threshold",
             "atmos_layer", "inherit_atmos"}
@@ -486,7 +545,7 @@ def _link_haze(node, output):
     _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
     for i, c in enumerate("rgb"):
         _link(node, "haze_color", "parent.haze_color.%s" % c, i)
-        _link(node, "haze_density", ATMOS % ("haze_density", "haze_density.%s" % c, "parent.haze_density.%s" % c), i)
+        _link(node, "haze_density", ATMOS % ("haze_density", "haze_density.%s" % "xyz"[i], "parent.haze_density.%s" % c), i)
     _link(node, "haze_color_gain", "parent.haze_color_gain")
     _link(node, "haze_amount", "parent.haze_amount")
     _link(node, "haze_height", "(%s) * 1000" % (ATMOS % ("haze_height", "haze_height", "parent.haze_height")))
@@ -719,12 +778,14 @@ def build():
             copy["from%d" % c].setValue("rgba." + channel)
             copy["to%d" % c].setValue("%s.%s" % (layer, channel))
         stream = copy
-    # Before / after: the plate as it came in, to compare.
-    before = nuke.nodes.Switch(name="BeforeAfter", xpos=0, ypos=320 + 40 * len(layer_sources))
-    before.setInput(0, stream)
-    before.setInput(1, plate)
-    before["which"].setExpression("parent.show_before")
-    stream = before
+    # Clip to: the plate's format, the plate's bounding box, or nothing.
+    clip = nuke.nodes.Crop(name="ClipTo", crop=True, xpos=0, ypos=320 + 40 * len(layer_sources))
+    for i, (fmt, bbox) in enumerate((("0", "plate.bbox.x"), ("0", "plate.bbox.y"),
+                                     ("plate.width", "plate.bbox.r"), ("plate.height", "plate.bbox.t"))):
+        clip["box"].setExpression("parent.clip_to==1 ? %s : %s" % (bbox, fmt), i)
+    clip["disable"].setExpression("parent.clip_to==2")
+    clip.setInput(0, stream)
+    stream = clip
     out = nuke.nodes.Output(xpos=0, ypos=320 + 40 * len(layer_sources) + 40)
     out.setInput(0, stream)
     group.end()

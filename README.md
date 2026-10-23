@@ -28,7 +28,7 @@ The node then shows up under **Nodes > EzDepthHaze**.
    default; pick another with *depth channel*).
 2. For a perspective render, connect its Camera to `camera` (Dots and NoOps in between are fine). For a 360 lat-long render, set
    *plate* to *Lat-long* and type the *camera height*.
-3. Connect an EzAtmosScatter node to `atmos`. Its `atmos_haze_color` layer (the colour
+3. Connect an EzAtmosScatter node to `atmos` (Dots and NoOps in between are fine). Its `atmos_haze_color` layer (the colour
    infinitely deep haze has in each direction) lights the haze, and with *inherit from
    atmos* on, its haze density, haze height and hdri rotation are used too. Without an atmos
    input, set *haze color* and *haze density* yourself.
@@ -101,10 +101,12 @@ The node opens on its **Easy** tab:
   *fog softness* down for a crisp top. Shafts and glow need the sun low and in front of the
   camera; with the sun behind or
   high, no slider can bring them out.
-- **surprise me** picks random adjustments within tasteful limits; **centre sliders** puts
-  them back to the look as applied; **before** shows the plate without haze.
-- **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*.
-  *saved looks* lists both folders; picking one loads it.
+- **surprise me** picks random adjustments within tasteful limits, and **surprise strength**
+  sets how far they go (0.5 nudges, 1 usual, 2 wild); **centre sliders** puts them back to
+  the look as applied.
+- **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*; pick one
+  in *saved looks* and press **apply look** to use it, or **delete look** to remove it.
+  Saving over a look or deleting one keeps a dated copy in the folder's `.backup` subfolder.
 - The **Advanced** tab always shows every knob, set to what Easy did. Editing one there
   makes it Easy's new starting point, with the sliders centred.
 
@@ -125,6 +127,8 @@ At the top of the tab:
   *steps* and *shadow quality*. **edge antialias** (Off, 1x, 2x, 3x; 1x by default) blends
   the haze across depth edges over 1 to 3 pixels, so the grain and stair-stepping along
   ridge lines and silhouettes goes away.
+- **clip to** crops the output to the plate's format (default), its bounding box, or not at
+  all.
 - **view output** picks what rgb shows; **viewer resolution** (Half by default) computes
   the haze at half or quarter size in the GUI and scales it back up, for about a quarter
   or a sixteenth of the GPU memory. Renders from a terminal always run at full size.
@@ -134,9 +138,11 @@ At the top of the tab:
 - **light** adds the sunlight falling on the terrain (surface light); **shadow** lightens
   (below the middle) or deepens (above) the shadowed haze.
 
-Looks are JSON files in the User folder (`~/.nuke/ezdepthhaze_looks`, or
-`$EZHAZE_USER_LOOKS`) or the Studio folder (`$EZHAZE_STUDIO_LOOKS`). The default paths are
-at the bottom of `python/ezdepthhaze.py`; change them there and rebuild. Easy mode only
+Looks are JSON files in the User and Studio folders. Each node holds them in two hidden file
+knobs, *user looks folder* (`~/.nuke/ezdepthhaze_looks` by default) and *studio looks
+folder* (empty by default), which a pipeline can set per show, e.g. with a knob default in
+`menu.py`; `$EZHAZE_USER_LOOKS` and `$EZHAZE_STUDIO_LOOKS` win when set. The built-in
+defaults are at the bottom of `python/ezdepthhaze.py`. Easy mode only
 reacts to changes made in the open panel, so loading or rendering a script never changes
 a knob.
 
