@@ -142,7 +142,8 @@ def _tool_code(defaults):
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
-                         "surface_add", "surface_strength", "silhouette", "far_softening"})
+                         "surface_add", "surface_strength", "silhouette", "far_softening",
+                         "far_saturation"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -272,6 +273,11 @@ def _add_easy_knobs(add):
     soften.setTooltip("Softens fine detail on distant terrain, more the more haze is in front of it (up to 6 "
                       "pixels), stopping at ridge lines. 0 is off.")
     add(soften, 0.0)
+    far_sat = nuke.Double_Knob("far_saturation", "far saturation")
+    far_sat.setRange(0, 2)
+    far_sat.setTooltip("Colour of distant terrain behind the haze: below 1 it goes towards grey, above 1 richer, "
+                       "the more haze is in front of it. The foreground keeps its colour. 1 leaves it as is.")
+    add(far_sat, 1.0)
 
     add(nuke.Text_Knob("adjust_divider", "Adjust"))
     for name, label, lo, hi, value, tip in [
@@ -756,6 +762,7 @@ def build():
     soft_plate.setInput(2, passes["transmittance"])
     _load_kernel(soft_plate, "EzDepthHazeSoften.blink")
     _link(soft_plate, "radius", "parent.far_softening * 6")
+    _link(soft_plate, "saturation", "parent.far_saturation")
 
     def merge(name, op, a, b, x, y):
         m = nuke.nodes.Merge2(name=name, operation=op, output="rgb", xpos=x, ypos=y)

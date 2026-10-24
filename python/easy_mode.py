@@ -479,8 +479,8 @@ def build_breakout(n):
         layers += [("haze_transmittance", "multiply"), ("haze_sun", "plus"), ("haze_sky", "plus")]
 
         # The trunk: the plate, down the left column. With far softening on, the plate the
-        # node composites is its softened copy, in the haze_plate layer.
-        if n["far_softening"].value() > 0:
+        # node composites is its softened copy, in the haze_plate layer (far saturation too).
+        if n["far_softening"].value() > 0 or n["far_saturation"].value() != 1.0:
             soft = nuke.nodes.Shuffle2(name="%s_haze_plate" % n.name(), xpos=x0, ypos=y0 - 50)
             soft.setInput(0, n)
             soft["in1"].setValue("haze_plate")
