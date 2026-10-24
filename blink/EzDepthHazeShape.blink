@@ -1,0 +1,56 @@
+// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.
+//
+// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with
+// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes
+// in faster, so far ridges become flat layers the colour of the haze while the foreground
+// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result
+// stays plate * T + light.
+//
+// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new
+// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.
+
+kernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>
+{
+  Image<eRead, eAccessPoint, eEdgeClamped> src;
+  Image<eRead, eAccessPoint, eEdgeClamped> trans;
+  Image<eWrite> dst;
+
+param:
+  float curve;
+  int mode;
+
+  void define()
+  {
+    defineParam(curve, "curve", 1.0f);
+    defineParam(mode, "mode", 0);
+  }
+
+  float shaped(float t)
+  {
+    float tau = -log(clamp(t, 1e-6f, 1.0f));
+    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.
+    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));
+  }
+
+  float scale(float t)
+  {
+    float veil = 1.0f - clamp(t, 0.0f, 1.0f);
+    if (veil < 1e-6f)
+      return 0.0f;
+    return (1.0f - shaped(t)) / veil;
+  }
+
+  void process()
+  {
+    float4 s = src();
+    float4 t = trans();
+    if (curve == 1.0f) {
+      dst() = s;
+      return;
+    }
+    if (mode == 0)
+      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);
+    else
+      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);
+  }
+};
