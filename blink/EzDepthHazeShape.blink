@@ -6,23 +6,27 @@
 // keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result
 // stays plate * T + light.
 //
-// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new
+// Inputs: `src` the pass to reshape, `trans` the transmittance pass, `depth` the raw depth in
+// red (sky pixels are left alone). Mode 0 writes the new
 // transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.
 
 kernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>
 {
   Image<eRead, eAccessPoint, eEdgeClamped> src;
   Image<eRead, eAccessPoint, eEdgeClamped> trans;
+  Image<eRead, eAccessPoint, eEdgeClamped> depth;
   Image<eWrite> dst;
 
 param:
   float curve;
   int mode;
+  float skyThreshold;
 
   void define()
   {
     defineParam(curve, "curve", 1.0f);
     defineParam(mode, "mode", 0);
+    defineParam(skyThreshold, "sky_threshold", 1e7f);
   }
 
   float shaped(float t)
@@ -44,7 +48,10 @@ param:
   {
     float4 s = src();
     float4 t = trans();
-    if (curve == 1.0f) {
+    // The sky (no depth, or past sky depth) keeps its haze as it was: only terrain is reshaped.
+    float raw = depth().x;
+    bool sky = raw <= 0.0f || raw >= skyThreshold;
+    if (curve == 1.0f || sky) {
       dst() = s;
       return;
     }

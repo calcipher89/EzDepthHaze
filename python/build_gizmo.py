@@ -742,9 +742,11 @@ def build():
         shape = nuke.nodes.BlinkScript(name="Silhouette_" + key, xpos=120 * i - 300, ypos=-20)
         shape.setInput(0, passes[key])
         shape.setInput(1, raw_t)
+        shape.setInput(2, depth_pick)
         _load_kernel(shape, "EzDepthHazeShape.blink")
         _link(shape, "curve", "1 + 1.5 * parent.silhouette")
         _link(shape, "mode", "0" if key == "transmittance" else "1")
+        _link(shape, "sky_threshold", "parent.sky_threshold")
         passes[key] = shape
 
     # Far softening: the plate loses fine detail with the haze in front of it.

@@ -215,8 +215,8 @@ Gizmo {
   xpos 0
   ypos -300
  }
-set N72214000 [stack 0]
-push $N72214000
+set Ne6d54000 [stack 0]
+push $Ne6d54000
  Copy {
   inputs 2
   from0 depth.Z
@@ -225,7 +225,8 @@ push $N72214000
   xpos 150
   ypos -200
  }
-set N72214c00 [stack 0]
+set Ne6d54c00 [stack 0]
+push $Ne6d54c00
  Reformat {
   type scale
   scale {{"\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1"}}
@@ -234,7 +235,7 @@ set N72214c00 [stack 0]
   xpos 150
   ypos -130
  }
-set N722ce000 [stack 0]
+set Ne6e0e000 [stack 0]
  Input {
   inputs 0
   name atmos
@@ -242,7 +243,7 @@ set N722ce000 [stack 0]
   ypos -300
   number 2
  }
-set N72214800 [stack 0]
+set Ne6d54800 [stack 0]
 add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -253,7 +254,7 @@ add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_insca
   xpos 750
   ypos -200
  }
-push $N72214800
+push $Ne6d54800
 add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -280,7 +281,7 @@ add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green
   xpos 750
   ypos -120
  }
-push $N72214800
+push $Ne6d54800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 atmos_haze_color
@@ -290,7 +291,7 @@ push $N72214800
   xpos 600
   ypos -200
  }
-set N72215000 [stack 0]
+set Ne6d55000 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -298,7 +299,7 @@ set N72215000 [stack 0]
   xpos 650
   ypos -170
  }
-push $N72214800
+push $Ne6d54800
 add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -316,8 +317,8 @@ add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky
   xpos 500
   ypos -140
  }
-set N7223cf00 [stack 0]
-push $N72215000
+set Ne6d7cf00 [stack 0]
+push $Ne6d55000
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -325,7 +326,7 @@ push $N72215000
   xpos 600
   ypos -170
  }
-push $N72214800
+push $Ne6d54800
 add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -343,7 +344,7 @@ add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun
   xpos 450
   ypos -140
  }
-set N7223ca00 [stack 0]
+set Ne6d7ca00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -394,8 +395,8 @@ set N7223ca00 [stack 0]
   xpos 750
   ypos -30
  }
-set N72296c00 [stack 0]
-push $N7223cf00
+set Ne6dd6c00 [stack 0]
+push $Ne6d7cf00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -403,8 +404,8 @@ push $N7223cf00
   xpos 500
   ypos -80
  }
-set N72297400 [stack 0]
-push $N7223ca00
+set Ne6dd7400 [stack 0]
+push $Ne6d7ca00
  Multiply {
   channels rgb
   value {{parent.haze_tint.r}}
@@ -412,9 +413,9 @@ push $N7223ca00
   xpos 450
   ypos -80
  }
-set N72297000 [stack 0]
-push $N722ce000
-push $N72214000
+set Ne6dd7000 [stack 0]
+push $Ne6e0e000
+push $Ne6d54000
  Reformat {
   type scale
   scale {{"\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1"}}
@@ -422,7 +423,7 @@ push $N72214000
   xpos 0
   ypos -130
  }
-set N72297800 [stack 0]
+set Ne6dd7800 [stack 0]
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -514,24 +515,25 @@ set N72297800 [stack 0]
   xpos -300
   ypos -50
  }
-set N722cf000 [stack 0]
-push $N722cf000
+set Ne6e0f000 [stack 0]
+push $Ne6e0f000
  BlinkScript {
-  inputs 2
+  inputs 3
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 8b86e4cb63813fafa59845140475ce12db8460b75ec5ea1eadb3d6f2d1d27205 3 \"src\" Read Point \"trans\" Read Point \"dst\" Write Point 2 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== 2 \"curve\" 1 1 Default \"mode\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    if (curve == 1.0f) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 0f5c582e9f8e659be61567599a53665bec9fc94d9d459fc0e781e52204e82e29 4 \"src\" Read Point \"trans\" Read Point \"depth\" Read Point \"dst\" Write Point 3 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== \"sky_threshold\" Float 1 gJYYSw== 3 \"curve\" 1 1 Default \"mode\" 1 1 Default \"skyThreshold\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass, `depth` the raw depth in\n// red (sky pixels are left alone). Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n  float skyThreshold;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    // The sky (no depth, or past sky depth) keeps its haze as it was: only terrain is reshaped.\n    float raw = depth().x;\n    bool sky = raw <= 0.0f || raw >= skyThreshold;\n    if (curve == 1.0f || sky) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeShape_curve {{"1 + 1.5 * parent.silhouette"}}
   EzDepthHazeShape_mode {{0}}
+  EzDepthHazeShape_sky_threshold {{parent.sky_threshold}}
   rebuild_finalise ""
   name Silhouette_transmittance
   xpos 60
   ypos -20
  }
-set N34e0a800 [stack 0]
-push $N72214c00
-push $N72214000
+set Nbab9a800 [stack 0]
+push $Ne6d54c00
+push $Ne6d54000
  BlinkScript {
   inputs 3
   recompileCount 2
@@ -544,12 +546,12 @@ push $N72214000
   xpos -150
   ypos -20
  }
-set N34e0ac00 [stack 0]
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbab9ac00 [stack 0]
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -628,12 +630,12 @@ push $N72297800
   xpos 540
   ypos -50
  }
-set N48f51400 [stack 0]
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbab51400 [stack 0]
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -712,12 +714,12 @@ push $N72297800
   xpos 420
   ypos -50
  }
-set N48f50800 [stack 0]
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbab50800 [stack 0]
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -796,7 +798,7 @@ push $N72297800
   xpos 300
   ypos -50
  }
-set N48f09c00 [stack 0]
+set Nbab09c00 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -804,21 +806,21 @@ set N48f09c00 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set N34e4e400 [stack 0]
-push $N48f09c00
+set Nbabe0400 [stack 0]
+push $Nbab09c00
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set N34e4e800 [stack 0]
-push $N722ce000
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbabe0800 [stack 0]
+push $Ne6e0e000
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -910,7 +912,7 @@ push $N72297800
   xpos 180
   ypos -50
  }
-set N48f09000 [stack 0]
+set Nbab09000 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -918,8 +920,8 @@ set N48f09000 [stack 0]
   name Wisps
   xpos 360
  }
-set N34e4e000 [stack 0]
-push $N48f09000
+set Nbabe0000 [stack 0]
+push $Nbab09000
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -927,13 +929,14 @@ push $N48f09000
   name FogShare
   xpos 240
  }
-push $N722cf000
-push $N722ce000
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+push $Ne6d54c00
+push $Ne6e0f000
+push $Ne6e0e000
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -1026,26 +1029,28 @@ push $N72297800
   ypos -50
  }
  BlinkScript {
-  inputs 2
+  inputs 3
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 8b86e4cb63813fafa59845140475ce12db8460b75ec5ea1eadb3d6f2d1d27205 3 \"src\" Read Point \"trans\" Read Point \"dst\" Write Point 2 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== 2 \"curve\" 1 1 Default \"mode\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    if (curve == 1.0f) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 0f5c582e9f8e659be61567599a53665bec9fc94d9d459fc0e781e52204e82e29 4 \"src\" Read Point \"trans\" Read Point \"depth\" Read Point \"dst\" Write Point 3 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== \"sky_threshold\" Float 1 gJYYSw== 3 \"curve\" 1 1 Default \"mode\" 1 1 Default \"skyThreshold\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass, `depth` the raw depth in\n// red (sky pixels are left alone). Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n  float skyThreshold;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    // The sky (no depth, or past sky depth) keeps its haze as it was: only terrain is reshaped.\n    float raw = depth().x;\n    bool sky = raw <= 0.0f || raw >= skyThreshold;\n    if (curve == 1.0f || sky) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeShape_curve {{"1 + 1.5 * parent.silhouette"}}
   EzDepthHazeShape_mode {{1}}
+  EzDepthHazeShape_sky_threshold {{parent.sky_threshold}}
   rebuild_finalise ""
   name Silhouette_sky
   xpos -180
   ypos -20
  }
-set N34e0a000 [stack 0]
-push $N722cf000
-push $N722ce000
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbab9a000 [stack 0]
+push $Ne6d54c00
+push $Ne6e0f000
+push $Ne6e0e000
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -1138,19 +1143,20 @@ push $N72297800
   ypos -50
  }
  BlinkScript {
-  inputs 2
+  inputs 3
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 8b86e4cb63813fafa59845140475ce12db8460b75ec5ea1eadb3d6f2d1d27205 3 \"src\" Read Point \"trans\" Read Point \"dst\" Write Point 2 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== 2 \"curve\" 1 1 Default \"mode\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    if (curve == 1.0f) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 0f5c582e9f8e659be61567599a53665bec9fc94d9d459fc0e781e52204e82e29 4 \"src\" Read Point \"trans\" Read Point \"depth\" Read Point \"dst\" Write Point 3 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== \"sky_threshold\" Float 1 gJYYSw== 3 \"curve\" 1 1 Default \"mode\" 1 1 Default \"skyThreshold\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass, `depth` the raw depth in\n// red (sky pixels are left alone). Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n  float skyThreshold;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    // The sky (no depth, or past sky depth) keeps its haze as it was: only terrain is reshaped.\n    float raw = depth().x;\n    bool sky = raw <= 0.0f || raw >= skyThreshold;\n    if (curve == 1.0f || sky) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeShape_curve {{"1 + 1.5 * parent.silhouette"}}
   EzDepthHazeShape_mode {{1}}
+  EzDepthHazeShape_sky_threshold {{parent.sky_threshold}}
   rebuild_finalise ""
   name Silhouette_sun
   xpos -300
   ypos -20
  }
-set N48f51c00 [stack 0]
+set Nbab51c00 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -1158,7 +1164,7 @@ set N48f51c00 [stack 0]
   name InScatter
   xpos 0
  }
-set N34e0b000 [stack 0]
+set Nbab9b000 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -1167,15 +1173,16 @@ set N34e0b000 [stack 0]
   xpos 240
   ypos 40
  }
-set N34e0bc00 [stack 0]
-push $N48f51c00
-push $N722cf000
-push $N722ce000
-push $N72296c00
-push $N72297400
-push $N72297000
-push $N722ce000
-push $N72297800
+set Nbab9bc00 [stack 0]
+push $Nbab51c00
+push $Ne6d54c00
+push $Ne6e0f000
+push $Ne6e0e000
+push $Ne6dd6c00
+push $Ne6dd7400
+push $Ne6dd7000
+push $Ne6e0e000
+push $Ne6dd7800
  BlinkScript {
   inputs 5
   recompileCount 2
@@ -1268,13 +1275,14 @@ push $N72297800
   ypos -50
  }
  BlinkScript {
-  inputs 2
+  inputs 3
   recompileCount 2
-  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 8b86e4cb63813fafa59845140475ce12db8460b75ec5ea1eadb3d6f2d1d27205 3 \"src\" Read Point \"trans\" Read Point \"dst\" Write Point 2 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== 2 \"curve\" 1 1 Default \"mode\" 1 1 Default 0"
-  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass. Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    if (curve == 1.0f) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
+  KernelDescription "3 \"EzDepthHazeShape\" iterate pixelWise 0f5c582e9f8e659be61567599a53665bec9fc94d9d459fc0e781e52204e82e29 4 \"src\" Read Point \"trans\" Read Point \"depth\" Read Point \"dst\" Write Point 3 \"curve\" Float 1 AACAPw== \"mode\" Int 1 AAAAAA== \"sky_threshold\" Float 1 gJYYSw== 3 \"curve\" 1 1 Default \"mode\" 1 1 Default \"skyThreshold\" 1 1 Default 0"
+  kernelSource "// EzDepthHazeShape: the silhouette control, bending how the haze builds with distance.\n//\n// The haze's optical depth tau (T = exp(-tau)) is bent around tau = 0.25: with\n// `curve` above 1, thin haze (near terrain) gets thinner and thick haze (far ranges) closes\n// in faster, so far ridges become flat layers the colour of the haze while the foreground\n// keeps its contrast. The haze light is scaled by the same change in (1 - T), so the result\n// stays plate * T + light.\n//\n// Inputs: `src` the pass to reshape, `trans` the transmittance pass, `depth` the raw depth in\n// red (sky pixels are left alone). Mode 0 writes the new\n// transmittance; mode 1 scales a light pass (sun, sky, ...) to match it.\n\nkernel EzDepthHazeShape : ImageComputationKernel<ePixelWise>\n\{\n  Image<eRead, eAccessPoint, eEdgeClamped> src;\n  Image<eRead, eAccessPoint, eEdgeClamped> trans;\n  Image<eRead, eAccessPoint, eEdgeClamped> depth;\n  Image<eWrite> dst;\n\nparam:\n  float curve;\n  int mode;\n  float skyThreshold;\n\n  void define()\n  \{\n    defineParam(curve, \"curve\", 1.0f);\n    defineParam(mode, \"mode\", 0);\n    defineParam(skyThreshold, \"sky_threshold\", 1e7f);\n  \}\n\n  float shaped(float t)\n  \{\n    float tau = -log(clamp(t, 1e-6f, 1.0f));\n    // Around tau = 0.25 (a fifth of the plate hidden): thinner haze thins, thicker thickens.\n    return exp(-tau * pow(tau / 0.25f, curve - 1.0f));\n  \}\n\n  float scale(float t)\n  \{\n    float veil = 1.0f - clamp(t, 0.0f, 1.0f);\n    if (veil < 1e-6f)\n      return 0.0f;\n    return (1.0f - shaped(t)) / veil;\n  \}\n\n  void process()\n  \{\n    float4 s = src();\n    float4 t = trans();\n    // The sky (no depth, or past sky depth) keeps its haze as it was: only terrain is reshaped.\n    float raw = depth().x;\n    bool sky = raw <= 0.0f || raw >= skyThreshold;\n    if (curve == 1.0f || sky) \{\n      dst() = s;\n      return;\n    \}\n    if (mode == 0)\n      dst() = float4(shaped(t.x), shaped(t.y), shaped(t.z), s.w);\n    else\n      dst() = float4(s.x * scale(t.x), s.y * scale(t.y), s.z * scale(t.z), s.w);\n  \}\n\};\n"
   rebuild ""
   EzDepthHazeShape_curve {{"1 + 1.5 * parent.silhouette"}}
   EzDepthHazeShape_mode {{1}}
+  EzDepthHazeShape_sky_threshold {{parent.sky_threshold}}
   rebuild_finalise ""
   name Silhouette_sun_free
   xpos -60
@@ -1287,25 +1295,25 @@ push $N72297800
   name ShadowLoss
   xpos 120
  }
-set N34e0b400 [stack 0]
-push $N34e0a000
-push $N48f51c00
-push $N34e0b000
-push $N34e0a800
-push $N48f51400
-push $N48f50800
-push $N34e4e400
-push $N34e4e800
-push $N34e4e000
-push $N34e0bc00
-push $N34e0b400
-push $N34e0a000
-push $N48f51c00
-push $N34e0b000
-push $N34e0a800
-push $N34e0b000
-push $N34e0a800
-push $N34e4e800
+set Nbab9b400 [stack 0]
+push $Nbab9a000
+push $Nbab51c00
+push $Nbab9b000
+push $Nbab9a800
+push $Nbab51400
+push $Nbab50800
+push $Nbabe0400
+push $Nbabe0800
+push $Nbabe0000
+push $Nbab9bc00
+push $Nbab9b400
+push $Nbab9a000
+push $Nbab51c00
+push $Nbab9b000
+push $Nbab9a800
+push $Nbab9b000
+push $Nbab9a800
+push $Nbabe0800
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -1313,7 +1321,7 @@ push $N34e4e800
   xpos 600
   ypos 40
  }
-push $N34e0ac00
+push $Nbab9ac00
  Merge2 {
   inputs 2
   operation plus
@@ -1345,7 +1353,7 @@ push $N34e0ac00
   xpos 0
   ypos 200
  }
-push $N72214000
+push $Ne6d54000
  Copy {
   inputs 2
   channels rgb
