@@ -22,7 +22,7 @@ BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
 LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_shadow", "haze_fog",
-          "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N"]
+          "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N", "haze_plate"]
 # EzAtmosScatter layers the gizmo reads. They must exist when it is built and loaded, or the
 # Shuffles picking them fall back to rgba.
 ATMOS_LAYERS = ["atmos_haze_color", "atmos_haze_sun", "atmos_haze_sky", "atmos_inscatter", "atmos_transmittance"]
@@ -142,7 +142,8 @@ def _tool_code(defaults):
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
-                         "surface_add", "surface_strength"})
+                         "surface_add", "surface_strength", "silhouette", "far_softening",
+                         "far_saturation"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -261,6 +262,22 @@ def _add_easy_knobs(add):
         knob.setRange(lo, hi)
         knob.setTooltip(tip)
         add(knob)
+    silhouette = nuke.Double_Knob("silhouette", "silhouette")
+    silhouette.setRange(0, 1)
+    silhouette.setTooltip("Bends how the haze builds with distance: near terrain keeps its contrast and the far "
+                          "ranges close in faster, turning into flat layers the colour of the sky. 0 is the plain "
+                          "haze. Adds no lift to the foreground, unlike more haze.")
+    add(silhouette, 0.0)
+    soften = nuke.Double_Knob("far_softening", "far softening")
+    soften.setRange(0, 1)
+    soften.setTooltip("Softens fine detail on distant terrain, more the more haze is in front of it (up to 6 "
+                      "pixels), stopping at ridge lines. 0 is off.")
+    add(soften, 0.0)
+    far_sat = nuke.Double_Knob("far_saturation", "far saturation")
+    far_sat.setRange(0, 2)
+    far_sat.setTooltip("Colour of distant terrain behind the haze: below 1 it goes towards grey, above 1 richer, "
+                       "the more haze is in front of it. The foreground keeps its colour. 1 leaves it as is.")
+    add(far_sat, 1.0)
 
     add(nuke.Text_Knob("adjust_divider", "Adjust"))
     for name, label, lo, hi, value, tip in [
@@ -724,6 +741,29 @@ def build():
         full.setInput(0, node)
         passes[key] = full
 
+    # Silhouette: bend how the haze builds with distance (thin haze thinner, thick haze
+    # thicker), reshaping the transmittance and scaling the haze light to match.
+    raw_t = passes["transmittance"]
+    for i, key in enumerate(("sun", "sky", "sun_free", "transmittance")):
+        shape = nuke.nodes.BlinkScript(name="Silhouette_" + key, xpos=120 * i - 300, ypos=-20)
+        shape.setInput(0, passes[key])
+        shape.setInput(1, raw_t)
+        shape.setInput(2, depth_pick)
+        _load_kernel(shape, "EzDepthHazeShape.blink")
+        _link(shape, "curve", "1 + 1.5 * parent.silhouette")
+        _link(shape, "mode", "0" if key == "transmittance" else "1")
+        _link(shape, "sky_threshold", "parent.sky_threshold")
+        passes[key] = shape
+
+    # Far softening: the plate loses fine detail with the haze in front of it.
+    soft_plate = nuke.nodes.BlinkScript(name="FarSoftening", xpos=-150, ypos=-20)
+    soft_plate.setInput(0, plate)
+    soft_plate.setInput(1, depth_pick)
+    soft_plate.setInput(2, passes["transmittance"])
+    _load_kernel(soft_plate, "EzDepthHazeSoften.blink")
+    _link(soft_plate, "radius", "parent.far_softening * 6")
+    _link(soft_plate, "saturation", "parent.far_saturation")
+
     def merge(name, op, a, b, x, y):
         m = nuke.nodes.Merge2(name=name, operation=op, output="rgb", xpos=x, ypos=y)
         m.setInput(0, b)
@@ -750,7 +790,7 @@ def build():
     surface_add = nuke.nodes.Multiply(name="SurfaceAdd", channels="rgb", xpos=600, ypos=40)
     surface_add["value"].setExpression("parent.surface_add")
     surface_add.setInput(0, surface)
-    lit_plate = merge("PlatePlusSurface", "plus", surface_add, plate, 0, 60)
+    lit_plate = merge("PlatePlusSurface", "plus", surface_add, soft_plate, 0, 60)
     dimmed = merge("PlateTimesT", "multiply", passes["transmittance"], lit_plate, 0, 100)
     hazed = merge("Hazed", "plus", inscatter, dimmed, 0, 140)
 
@@ -769,7 +809,8 @@ def build():
     layer_sources = [("haze_transmittance", passes["transmittance"]), ("haze_inscatter", inscatter),
                      ("haze_sun", passes["sun"]), ("haze_sky", passes["sky"]), ("haze_shadow", shadow),
                      ("haze_fog", fog), ("haze_wisps", wisps), ("surface_sunlight", surface),
-                     ("surface_sun_visibility", visibility), ("P", passes["P"]), ("N", passes["N"])]
+                     ("surface_sun_visibility", visibility), ("P", passes["P"]), ("N", passes["N"]),
+                     ("haze_plate", soft_plate)]
     for i, (layer, source) in enumerate(layer_sources):
         copy = nuke.nodes.Copy(name="Layer_" + layer, xpos=0, ypos=320 + 40 * i)
         copy.setInput(0, stream)

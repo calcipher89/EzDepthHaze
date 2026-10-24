@@ -1,0 +1,67 @@
+// EzDepthHazeSoften: far softening and far saturation, the loss of fine detail and colour on
+// distant terrain.
+//
+// Blurs the plate by an amount that grows with the haze in front of it (1 - transmittance),
+// so the foreground stays sharp and the far ranges lose their texture, but only between
+// pixels at about the same depth, so ridge lines stay crisp.
+//
+// Inputs: `src` the plate, `depth` with the raw depth in red, `trans` the transmittance.
+
+kernel EzDepthHazeSoften : ImageComputationKernel<ePixelWise>
+{
+  Image<eRead, eAccessRandom, eEdgeClamped> src;
+  Image<eRead, eAccessRandom, eEdgeClamped> depth;
+  Image<eRead, eAccessPoint, eEdgeClamped> trans;
+  Image<eWrite> dst;
+
+param:
+  float radius;
+  float edge;
+  float saturation;
+
+  void define()
+  {
+    defineParam(radius, "radius", 0.0f);
+    defineParam(edge, "edge", 0.03f);
+    defineParam(saturation, "saturation", 1.0f);
+  }
+
+  // Far saturation: the colour behind the haze goes towards grey (or richer), the more haze
+  // is in front of it.
+  float4 adjustSaturation(float4 c, float haze)
+  {
+    float s = 1.0f + (saturation - 1.0f) * haze;
+    float l = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
+    return float4(l + (c.x - l) * s, l + (c.y - l) * s, l + (c.z - l) * s, c.w);
+  }
+
+  float key(float d)
+  {
+    return d > 0.0f ? log(d) : 1e6f;
+  }
+
+  void process(int2 pos)
+  {
+    float4 t = trans();
+    float haze = 1.0f - clamp((t.x + t.y + t.z) / 3.0f, 0.0f, 1.0f);
+    float r = radius * haze;
+    int ri = int(r + 0.5f);
+    if (ri <= 0 || radius <= 0.0f) {
+      dst() = adjustSaturation(src(pos.x, pos.y), haze);
+      return;
+    }
+    float kc = key(depth(pos.x, pos.y).x);
+    float sigma2 = 2.0f * (r * 0.6f) * (r * 0.6f) + 0.01f;
+    float4 sum = float4(0.0f);
+    float wsum = 0.0f;
+    for (int dy = -ri; dy <= ri; dy++) {
+      for (int dx = -ri; dx <= ri; dx++) {
+        float kd = (key(depth(pos.x + dx, pos.y + dy).x) - kc) / edge;
+        float w = exp(-(dx * dx + dy * dy) / sigma2 - kd * kd);
+        sum += src(pos.x + dx, pos.y + dy) * w;
+        wsum += w;
+      }
+    }
+    dst() = adjustSaturation(sum / wsum, haze);
+  }
+};
