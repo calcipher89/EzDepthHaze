@@ -137,11 +137,7 @@ At the top of the tab:
   They follow the sliders, and typing one sets the knobs behind it.
 - **silhouette** bends how the haze builds with distance: the foreground keeps its contrast
   and the far ranges close in faster, into flat layers the colour of the sky, without the
-  lift that more *haze* gives. **far softening** softens fine detail on distant terrain
-  (up to 6 pixels, more with more haze in front, stopping at ridge lines); the softened
-  plate is written to `haze_plate`, and the layer breakout uses it. **far saturation** takes
-  colour out of distant terrain (below 1) or adds it (above 1), more with more haze in
-  front; 1 leaves it as it is. It is in `haze_plate` too.
+  lift that more *haze* gives.
 - **light** adds the sunlight falling on the terrain (surface light); **shadow** lightens
   (below the middle) or deepens (above) the shadowed haze.
 
