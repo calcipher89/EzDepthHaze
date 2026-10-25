@@ -1,5 +1,4 @@
-// EzDepthHazeSoften: far softening and far saturation, the loss of fine detail and colour on
-// distant terrain.
+// EzDepthHazeSoften: far softening, the loss of fine detail on distant terrain.
 //
 // Blurs the plate by an amount that grows with the haze in front of it (1 - transmittance),
 // so the foreground stays sharp and the far ranges lose their texture, but only between
@@ -17,22 +16,11 @@ kernel EzDepthHazeSoften : ImageComputationKernel<ePixelWise>
 param:
   float radius;
   float edge;
-  float saturation;
 
   void define()
   {
     defineParam(radius, "radius", 0.0f);
     defineParam(edge, "edge", 0.03f);
-    defineParam(saturation, "saturation", 1.0f);
-  }
-
-  // Far saturation: the colour behind the haze goes towards grey (or richer), the more haze
-  // is in front of it.
-  float4 adjustSaturation(float4 c, float haze)
-  {
-    float s = 1.0f + (saturation - 1.0f) * haze;
-    float l = 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
-    return float4(l + (c.x - l) * s, l + (c.y - l) * s, l + (c.z - l) * s, c.w);
   }
 
   float key(float d)
@@ -46,8 +34,8 @@ param:
     float haze = 1.0f - clamp((t.x + t.y + t.z) / 3.0f, 0.0f, 1.0f);
     float r = radius * haze;
     int ri = int(r + 0.5f);
-    if (ri <= 0 || radius <= 0.0f) {
-      dst() = adjustSaturation(src(pos.x, pos.y), haze);
+    if (ri <= 0) {
+      dst() = src(pos.x, pos.y);
       return;
     }
     float kc = key(depth(pos.x, pos.y).x);
@@ -62,6 +50,6 @@ param:
         wsum += w;
       }
     }
-    dst() = adjustSaturation(sum / wsum, haze);
+    dst() = sum / wsum;
   }
 };
