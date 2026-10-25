@@ -6,6 +6,12 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
+## Guide
+
+[docs/EZ_Haze_Field_Guide.pdf](docs/EZ_Haze_Field_Guide.pdf) is an illustrated artist guide to EzDepthHaze and
+EzAtmosScatter: a quick start, every knob, the looks, layers, recipes and fixes. To follow
+along, build the demo scene it uses with `examples/build_demo.py` (see Demo below).
+
 ## Installing
 
 No install: `groups/EzDepthHaze_group.nk` is the same node as a plain Group. Import it with
