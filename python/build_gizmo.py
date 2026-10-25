@@ -72,8 +72,10 @@ _FIND_ATMOS = ("a = nuke.thisNode().input(2)\n"
                "while a is not None and not a.knob('haze_density'):\n"
                "    a = a.input(0) if a.inputs() else None\n")
 # The atmos settings EzDepthHaze can inherit: (hidden knob, knob on the atmos node, channels).
+# "a|b" reads a when the atmos node has it, else b: the sun is EzAtmosScatter's sun in use
+# (found in the HDRI, from its Axis or manual), or its manual sun on older versions.
 ATMOS_KNOBS = [("atm_haze_density", "haze_density", 3), ("atm_haze_height", "haze_height", 1),
-               ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_direction", 3)]
+               ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_in_use|sun_direction", 3)]
 
 
 def _add_atmos_knobs(add):
@@ -92,8 +94,9 @@ def _link_atmos_knobs(group):
     for name, source, size in ATMOS_KNOBS:
         for i in range(size):
             pick = ", %d" % i if size > 1 else ""
-            expr = ("[python -execlocal {%sret = a['%s'].getValueAt(nuke.frame()%s) if a is not None else 0}]"
-                    % (_FIND_ATMOS, source, pick))
+            knob = " or ".join("a.knob('%s')" % s for s in source.split("|"))
+            expr = ("[python -execlocal {%sret = (%s).getValueAt(nuke.frame()%s) if a is not None else 0}]"
+                    % (_FIND_ATMOS, knob, pick))
             if size > 1:
                 group[name].setExpression(expr, i)
             else:

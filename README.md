@@ -64,7 +64,7 @@ channel of the plate and adds the layers listed under Layers below.
 | sky | Leave Sky | Pixels with no depth: leave them, or haze them as if *sky distance* away |
 | sky distance (km) | 50 | Distance used for sky pixels with Haze Sky |
 | sky depth | 1e7 | Depth at or beyond which a pixel counts as sky |
-| inherit from atmos | on | Take haze density, haze height and rotation from the EzAtmosScatter input |
+| inherit from atmos | on | Take haze density, haze height, rotation and the sun from the EzAtmosScatter input. The sun is the one it uses, whether found in the HDRI (Auto), from its Axis or manual |
 | match horizon sky | on | Far haze takes the light of the atmos input's own sky, so distant terrain fades into the sky behind it |
 | match distance (km) | 20 | Distance over which the haze light changes from the camera's to the horizon sky's |
 | atmos layer | atmos_haze_color | Layer of the atmos input to use (rgba for a plain lat-long) |

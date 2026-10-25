@@ -181,7 +181,10 @@ def sun_suggestion(n, preset):
     wm = cam["world_matrix"]
     yaw = math.atan2(-wm.getValue(2), wm.getValue(10))
     sun = list(atmos["sun_direction"].value())
-    if atmos.knob("sun_from") and atmos["sun_from"].value() == "Auto (HDRI)":
+    if atmos.knob("sun_in_use"):
+        # Newer EzAtmosScatter: the sun it uses, whether found in the HDRI, from an Axis or manual.
+        sun = list(atmos["sun_in_use"].value())
+    elif atmos.knob("sun_from") and atmos["sun_from"].value() == "Auto (HDRI)":
         with atmos:
             light = nuke.toNode("Light")
             if light is not None:
