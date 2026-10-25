@@ -478,15 +478,7 @@ def build_breakout(n):
             layers.append(("surface_sunlight", "plus"))
         layers += [("haze_transmittance", "multiply"), ("haze_sun", "plus"), ("haze_sky", "plus")]
 
-        # The trunk: the plate, down the left column. With far softening on, the plate the
-        # node composites is its softened copy, in the haze_plate layer (far saturation too).
-        if n["far_softening"].value() > 0 or n["far_saturation"].value() != 1.0:
-            soft = nuke.nodes.Shuffle2(name="%s_haze_plate" % n.name(), xpos=x0, ypos=y0 - 50)
-            soft.setInput(0, n)
-            soft["in1"].setValue("haze_plate")
-            soft["label"].setValue("haze_plate (softened plate) to rgba")
-            made.append(soft)
-            plate = soft
+        # The trunk: the plate, down the left column.
         trunk = dot(plate, x0, y0)
         # The row of Dots from the node's output, one column per layer.
         row = dot(n, x0 + col, y0)
