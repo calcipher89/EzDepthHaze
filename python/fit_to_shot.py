@@ -207,6 +207,69 @@ def sun_suggestion(n, preset):
     return question, direction, want["color"]
 
 
+def _phase(mu, g=0.76):
+    """Cornette-Shanks haze phase function, as in EzAtmosScatter's kernel."""
+    g2 = g * g
+    return 1.5 * (1.0 - g2) / (2.0 + g2) * (1.0 + mu * mu) / max(1.0 + g2 - 2.0 * g * mu, 1e-6) ** 1.5
+
+
+def _frame_phase(n, cam, sun):
+    """How strongly the haze in frame scatters this sun towards the camera: the haze phase
+    function averaged over a grid of view directions across the camera's frame."""
+    wm = cam["world_matrix"]
+    ax = [wm.getValue(0), wm.getValue(4), wm.getValue(8)]
+    ay = [wm.getValue(1), wm.getValue(5), wm.getValue(9)]
+    az = [wm.getValue(2), wm.getValue(6), wm.getValue(10)]
+    focal = cam["focal"].value() if cam.knob("focal") else 35.0
+    hap = cam["haperture"].value() if cam.knob("haperture") else 36.0
+    plate = n.input(0)
+    aspect = float(plate.height()) / plate.width() if plate is not None and plate.width() else 9.0 / 16.0
+    sx, sy = hap / 2.0 / focal, hap * aspect / 2.0 / focal
+    total = 0.0
+    for j in range(5):
+        for i in range(9):
+            u, v = (i / 4.0 - 1.0) * sx, (j / 2.0 - 1.0) * sy
+            d = [-az[c] + u * ax[c] + v * ay[c] for c in range(3)]
+            ln = math.sqrt(sum(x * x for x in d)) or 1.0
+            total += _phase(sum(d[c] / ln * sun[c] for c in range(3)))
+    return total / 45.0
+
+
+def follow_sun(n, preset):
+    """Keep the sun EzAtmosScatter finds in its HDRI (or takes from its Axis) and fit the look to
+    it: the sunlit haze is scaled so the glow and shafts in frame are about as strong as with the
+    sun the look was tuned with. Returns a summary line, or None when the sun is manual (then the
+    look offers to move it instead) or there is nothing to fit to."""
+    want = preset.get("sun")
+    atmos = _atmos(n)
+    cam = _camera(n)
+    if not want or atmos is None or not atmos.knob("sun_in_use") or not atmos.knob("sun_from"):
+        return None
+    if atmos["sun_from"].value() == "Manual" or cam is None or not cam.knob("world_matrix") \
+            or n["plate_type"].getValue() == 1:
+        return None
+    sun = list(atmos["sun_in_use"].value())
+    ln = math.sqrt(sum(x * x for x in sun)) or 1.0
+    sun = [x / ln for x in sun]
+    wm = cam["world_matrix"]
+    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))
+    a = yaw + math.radians(want["azimuth"])
+    e = math.radians(want["elevation"])
+    tuned = [math.sin(a) * math.cos(e), math.sin(e), -math.cos(a) * math.cos(e)]
+    ratio = _frame_phase(n, cam, tuned) / max(_frame_phase(n, cam, sun), 1e-6)
+    scale = min(max(ratio, 0.5), 2.0)
+    n["sun_scatter"].setValue(round(n["sun_scatter"].value() * scale, 3))
+    az = math.degrees(math.atan2(sun[0], -sun[2]) - yaw)
+    az = (az + 180.0) % 360.0 - 180.0
+    elev = math.degrees(math.asin(max(-1.0, min(1.0, sun[1]))))
+    line = ("Kept %s's sun from its %s (%.0f deg up, %.0f deg %s of the view); sun scatter x%.2f to match "
+            "the look's glow." % (atmos.name(), "HDRI" if atmos["sun_from"].value().startswith("Auto") else "Axis",
+                                  elev, abs(az), "right" if az > 0 else "left", scale))
+    if ratio > 2.0:
+        line += " The sun is too far from where the look wants it for a full match, so shafts and glow stay weaker."
+    return line
+
+
 def _plain(n, preset):
     """The preset as tuned, for when there is no depth or camera to fit it to."""
     for k, v in preset["knobs"].items():
@@ -285,7 +348,14 @@ def apply_preset(n):
     except ValueError as e:
         _plain(n, preset)
         summary = "%s, as tuned on the demo (%s to fit it to this shot)." % (n["preset"].value(), e)
-    offer = sun_suggestion(n, preset)
+    # A sun from the HDRI or an Axis stays where it is (moving it would part it from the sky);
+    # the look is fitted to it instead. Only a manual sun is offered the look's own sun.
+    followed = follow_sun(n, preset)
+    if followed is not None:
+        summary += "\n" + followed
+        offer = None
+    else:
+        offer = sun_suggestion(n, preset)
     if not nuke.GUI:
         print(summary)
         return summary

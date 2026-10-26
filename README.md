@@ -159,9 +159,17 @@ a knob.
 
 Pick a look (the *look* menu or a look button) and it is applied straight away, fitted to the shot (see below);
 every knob stays editable. *apply* applies it again, for example after connecting the plate
-and camera, or to undo your tweaks. A short summary pops up, and when the EzAtmosScatter
-sun is far from where the look wants it, it asks whether to move it there (sun direction
-and colour, with *sun from* set to Manual). *haze tint* colours all the haze light.
+and camera, or to undo your tweaks. A short summary pops up. *haze tint* colours all the haze light.
+
+The sun depends on where EzAtmosScatter gets it:
+
+- **From the HDRI (Auto) or an Axis**: the look keeps that sun, so the haze stays lined up
+  with the sky, and fits itself to it. The sunlit haze (*sun scatter*) is scaled, by up to 2x
+  either way, so the glow and shafts in frame are about as strong as with the sun the look
+  was tuned with. The haze colour and where the shafts fall still follow the real sun: a sun
+  higher or further round than the look's gives a cooler, flatter version of it.
+- **Manual**: when the sun is far from where the look wants it, it asks whether to move it
+  there (sun direction and colour).
 
 | Preset | Look | Sun it offers |
 | --- | --- | --- |
