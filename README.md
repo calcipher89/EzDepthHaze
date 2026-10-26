@@ -150,7 +150,11 @@ At the top of the tab:
 Looks are JSON files in the User and Studio folders. Each node holds them in two hidden file
 knobs, *user looks folder* (`~/.nuke/ezdepthhaze_looks` by default) and *studio looks
 folder* (empty by default), which a pipeline can set per show, e.g. with a knob default in
-`menu.py`; `$EZHAZE_USER_LOOKS` and `$EZHAZE_STUDIO_LOOKS` win when set. The built-in
+`menu.py`; `$EZHAZE_USER_LOOKS` and `$EZHAZE_STUDIO_LOOKS` win when set. A folder can use
+environment variables as `$SHOW`, `${SHOW}` or `[getenv SHOW]`, for example
+`/data/jobs/$SHOW/tools/nuke/presets/ezDepthHaze`. *save look* creates the folder if it is
+missing, and refuses (saying why) a folder that isn't a full path, uses a variable that isn't
+set in Nuke, or can't be created or written to. The built-in
 defaults are at the bottom of `python/ezdepthhaze.py`. Easy mode only
 reacts to changes made in the open panel, so loading or rendering a script never changes
 a knob.

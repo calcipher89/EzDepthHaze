@@ -338,6 +338,7 @@ def _add_easy_knobs(add):
     add(remove)
     # The looks folders, as hidden file knobs so a studio can set them per show (in a knob
     # default or a script) without Python. $EZHAZE_USER_LOOKS / $EZHAZE_STUDIO_LOOKS still win.
+    # Paths may use $VAR, ${VAR} or [getenv VAR].
     for key, label in (("User", "user looks folder"), ("Studio", "studio looks folder")):
         folder = nuke.File_Knob(key.lower() + "_looks_dir", label)
         folder.setFlag(nuke.INVISIBLE)
