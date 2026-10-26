@@ -119,9 +119,12 @@ The node opens on its **Easy** tab:
 At the top of the tab:
 
 - **analyze** checks the inputs and sets up the plate: *units to metres* from the
-  EzAtmosScatter in `atmos` (its own analyze knows the scene's scale), 1/Z depth from the
-  values, and a sky dome or card behind the terrain. It warns about a missing camera or a
-  sun far from where the look wants it.
+  EzAtmosScatter in `atmos` when it is set there (not 1). Depth values alone can't tell
+  decimetres from metres, so otherwise it asks once per node which units the scene is in
+  (Metres, Decimetres, Centimetres, Millimetres, Feet or Inches, each with the median depth it
+  would give), and sets the atmos node to match. It also finds 1/Z depth from the values, and
+  a sky dome or card behind the terrain, and warns about a missing camera or a sun far from
+  where the look wants it.
 - **layer breakout** builds the result from the layers next to the node: a row of Dots off
   its output with a Shuffle per layer, each dropping to a Merge on a trunk that starts from
   the plate, and a difference check at the bottom that should be black.

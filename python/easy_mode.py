@@ -280,6 +280,46 @@ def on_knob(n, k):
         rebase(n)
 
 
+# Scene units analyze offers when it can't tell them from the atmos node: (label, metres).
+SCENE_UNITS = [("Metres", 1.0), ("Decimetres", 0.1), ("Centimetres", 0.01), ("Millimetres", 0.001),
+               ("Feet", 0.3048), ("Inches", 0.0254)]
+
+
+def _scene_units(n, atmos, atmos_scale, raw):
+    """Set 'units to metres' and say how. The depth values alone can't tell decimetres from
+    metres, so: the atmos node's units when they are set there (not 1); else, once per node,
+    ask (with the median depth shown in each unit); else keep the node's own."""
+    if atmos_scale is not None and abs(atmos_scale - 1.0) > 1e-9:
+        n["depth_scale"].setValue(atmos_scale)
+        return "Units to metres %g, from %s." % (atmos_scale, atmos.name())
+    current = n["depth_scale"].value()
+    if n["units_confirmed"].value() or not nuke.GUI:
+        return "Units to metres %g (kept; change 'units to metres' if the scene isn't in that)." % current
+    median = raw[len(raw) // 2]
+    if n["depth_type"].getValue() == 2:
+        median = 1.0 / median
+    options = ["%s: median depth %.3g km" % (label, median * m / 1000.0) for label, m in SCENE_UNITS]
+    default = 0
+    for i, (_, m) in enumerate(SCENE_UNITS):
+        if abs(m - current) < 1e-9:
+            default = i
+    pick = None
+    try:
+        pick = nuke.choice("EzDepthHaze analyze", "What units is the scene's depth in?", options, default)
+    except Exception:
+        pick = None
+    if pick is None or pick < 0:
+        return "Units to metres %g (kept)." % current
+    label, scale = SCENE_UNITS[pick]
+    n["depth_scale"].setValue(scale)
+    n["units_confirmed"].setValue(True)
+    line = "Units to metres %g: the scene is in %s (you picked it)." % (scale, label.lower())
+    if atmos is not None and atmos.knob("scene_scale"):
+        atmos["scene_scale"].setValue(scale)
+        line += " %s's units to metres set to match." % atmos.name()
+    return line
+
+
 def analyze(n):
     """Check the inputs and set up the plate, then say what was set and what to look at."""
     done, warn = [], []
@@ -287,15 +327,11 @@ def analyze(n):
     if cam is None and n["plate_type"].getValue() == 0:
         warn.append("No camera in the 'camera' input (Dots and NoOps are fine).")
     atmos = _atmos(n)
+    atmos_scale = None
     if atmos is None:
         warn.append("No EzAtmosScatter in 'atmos': the haze uses the flat haze colour and density.")
     elif atmos.knob("scene_scale"):
-        scale = atmos["scene_scale"].value()
-        if abs(scale - n["depth_scale"].value()) > 1e-9:
-            n["depth_scale"].setValue(scale)
-            done.append("Units to metres %g, from %s." % (scale, atmos.name()))
-        else:
-            done.append("Units to metres %g (matches %s)." % (scale, atmos.name()))
+        atmos_scale = atmos["scene_scale"].value()
     plate = n.input(0)
     if plate is None:
         raise ValueError("connect a plate with depth first")
@@ -312,6 +348,7 @@ def analyze(n):
     if raw[len(raw) // 2] < 0.01 and n["depth_type"].getValue() != 2:
         n["depth_type"].setValue("1/Z")
         done.append("The depth looks like 1/Z (Nuke's ScanlineRender): depth type set to 1/Z.")
+    done.append(_scene_units(n, atmos, atmos_scale, raw))
     if n["sky_handling"].value() != "Haze Sky":
         n["sky_handling"].setValue("Haze Sky")
         done.append("Sky: Haze Sky, so the sky fades into the haze like the terrain.")

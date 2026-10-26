@@ -382,6 +382,10 @@ def _add_knobs(group, depth_pick, env_pick):
     add(depth_type)
     add(*_double("depth_scale", "units to metres", 0.001, 100,
                  "Scene units to metres, e.g. 0.01 for centimetres. Scales the depth and the camera position.", 1.0))
+    confirmed = nuke.Boolean_Knob("units_confirmed", "units confirmed")
+    confirmed.setTooltip("Set when you picked the scene units in analyze, so it doesn't ask again.")
+    confirmed.setFlag(nuke.INVISIBLE)
+    add(confirmed)
     add(*_double("latlong_camera_height", "camera height (m)", 0, 5000,
                  "Camera height above sea level for lat-long plates. Camera plates use the camera's height.", 1.0))
     sky = nuke.Enumeration_Knob("sky_handling", "sky", ["Leave Sky", "Haze Sky"])
