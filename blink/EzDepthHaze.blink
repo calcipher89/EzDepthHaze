@@ -49,6 +49,7 @@ kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
 param:
   int output;
   int latlongPlate;
+  int envScreen;
   float3 camRow0;
   float3 camRow1;
   float3 camRow2;
@@ -115,6 +116,7 @@ local:
   {
     defineParam(output, "output", 1);
     defineParam(latlongPlate, "latlong_plate", 0);
+    defineParam(envScreen, "env_screen", 0);
     defineParam(camRow0, "cam_row0", float3(1.0f, 0.0f, 0.0f));
     defineParam(camRow1, "cam_row1", float3(0.0f, 1.0f, 0.0f));
     defineParam(camRow2, "cam_row2", float3(0.0f, 0.0f, 1.0f));
@@ -194,6 +196,9 @@ local:
   }
 
   // ---- Lat-long lookups --------------------------------------------------------------
+  // With envScreen set, the atmos layers come from an EzAtmosScatter whose output is already
+  // the camera's view (output as Camera), so each pixel reads its own place instead of looking
+  // its view direction up in a lat-long. Every lookup here is along the pixel's own view ray.
 
   float2 latlongUV(float3 d)
   {
@@ -203,25 +208,25 @@ local:
     return float2(u - floor(u), lat / pi + 0.5f);
   }
 
-  float3 sunLookup(float3 d)
+  float3 sunLookup(float3 d, float2 screen)
   {
-    float2 uv = latlongUV(d);
+    float2 uv = envScreen != 0 ? screen : latlongUV(d);
     float4 c = bilinear(envSun, envSun.bounds.x1 + uv.x * envSun.bounds.width() - 0.5f,
                         envSun.bounds.y1 + uv.y * envSun.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
   }
 
-  float3 skyLookup(float3 d)
+  float3 skyLookup(float3 d, float2 screen)
   {
-    float2 uv = latlongUV(d);
+    float2 uv = envScreen != 0 ? screen : latlongUV(d);
     float4 c = bilinear(envSky, envSky.bounds.x1 + uv.x * envSky.bounds.width() - 0.5f,
                         envSky.bounds.y1 + uv.y * envSky.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
   }
 
-  float3 horizonLookup(float3 d)
+  float3 horizonLookup(float3 d, float2 screen)
   {
-    float2 uv = latlongUV(d);
+    float2 uv = envScreen != 0 ? screen : latlongUV(d);
     float4 c = bilinear(horizonLight, horizonLight.bounds.x1 + uv.x * horizonLight.bounds.width() - 0.5f,
                         horizonLight.bounds.y1 + uv.y * horizonLight.bounds.height() - 0.5f);
     return float3(c.x, c.y, c.z);
@@ -465,9 +470,9 @@ local:
 
     // Haze light: the sunlit and sky-lit parts, and the same far away, where they take on
     // the atmosphere's own horizon sky.
-    float3 sunNear = (useEnv != 0 ? sunLookup(dir) : hazeFlatSun) * (hazeColorGain * sunScatter);
-    float3 skyNear = (useEnv != 0 ? skyLookup(dir) : hazeFlatSky) * (hazeColorGain * skyScatter);
-    float3 k = useFar != 0 ? horizonLookup(dir) : float3(1.0f);
+    float3 sunNear = (useEnv != 0 ? sunLookup(dir, float2(u, v)) : hazeFlatSun) * (hazeColorGain * sunScatter);
+    float3 skyNear = (useEnv != 0 ? skyLookup(dir, float2(u, v)) : hazeFlatSky) * (hazeColorGain * skyScatter);
+    float3 k = useFar != 0 ? horizonLookup(dir, float2(u, v)) : float3(1.0f);
     // The horizon sky differs from the camera's light because sunlight further away is dimmer
     // and redder; sky light is not, so the whole difference goes to the sunlit part.
     float3 skyFar = skyNear;

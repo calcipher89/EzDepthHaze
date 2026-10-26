@@ -37,7 +37,11 @@ The node then shows up under **Nodes > EzDepthHaze**.
 3. Connect an EzAtmosScatter node to `atmos` (Dots and NoOps in between are fine). Its `atmos_haze_color` layer (the colour
    infinitely deep haze has in each direction) lights the haze, and with *inherit from
    atmos* on, its haze density, haze height and hdri rotation are used too. Without an atmos
-   input, set *haze color* and *haze density* yourself.
+   input, set *haze color* and *haze density* yourself. The atmos node can be set to *output
+   as* Lat-long or Camera (the shot camera's view, at the project format): EzDepthHaze notices
+   Camera and reads its layers per pixel, so one atmos node can give both the sky plate and
+   the haze light. Keep the plate at the project format then. (Skydome output is a dome
+   texture and doesn't work here.)
 
 For each pixel:
 
