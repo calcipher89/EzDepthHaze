@@ -12,6 +12,7 @@ so the Advanced tab always shows exactly what Easy did, ready to fine-tune.
 import json
 import os
 import random
+import re
 
 import nuke
 
@@ -342,9 +343,30 @@ def look_dir(n, where):
     d = os.environ.get(LOOK_DIRS[where]["env"])
     knob = n.knob(where.lower() + "_looks_dir")
     if not d and knob is not None:
-        d = knob.evaluate() if hasattr(knob, "evaluate") else knob.value()
-    d = d or LOOK_DIRS[where]["path"]
+        d = knob.value()
+    d = (d or LOOK_DIRS[where]["path"]).strip()
+    # $VAR and ${VAR} are environment variables (Tcl would read them as its own variables);
+    # an unset one stays as $VAR, which look_dir_problem reports.
+    d = re.sub(r"\$\{?(\w+)\}?", lambda m: os.environ.get(m.group(1), "$" + m.group(1)), d)
+    if "[" in d:
+        # Tcl, such as [getenv SHOW]; its error names an unset variable as $SHOW.
+        try:
+            d = nuke.tcl("subst", d)
+        except RuntimeError as e:
+            d = str(e)
     return os.path.expanduser(d) if d else ""
+
+
+def look_dir_problem(d):
+    """Why a looks folder can't be used, or None. An unset variable leaves '$NAME' in the path
+    (or, through [getenv], Tcl's error text), and a relative path would land wherever Nuke was
+    started from."""
+    m = re.search(r"\$\{?(\w+)", d)
+    if m:
+        return "$%s isn't set in Nuke" % m.group(1)
+    if not os.path.isabs(d):
+        return "it isn't a full path"
+    return None
 
 
 def list_looks(n):
@@ -352,7 +374,7 @@ def list_looks(n):
     names = []
     for where in ("User", "Studio"):
         d = look_dir(n, where)
-        if d and os.path.isdir(d):
+        if d and not look_dir_problem(d) and os.path.isdir(d):
             for f in sorted(os.listdir(d)):
                 if f.endswith(".json"):
                     names.append("%s: %s" % (where, f[:-5]))
@@ -402,8 +424,17 @@ def save_look(n):
     if not d:
         raise ValueError("no %s looks folder: set the %s looks folder knob or $%s"
                          % (where.lower(), where.lower(), LOOK_DIRS[where]["env"]))
+    problem = look_dir_problem(d)
+    if problem:
+        raise ValueError("can't save to the %s looks folder '%s': %s" % (where.lower(), d, problem))
     if not os.path.isdir(d):
-        os.makedirs(d)
+        try:
+            os.makedirs(d)
+        except OSError as e:
+            raise ValueError("can't create the %s looks folder '%s' (%s): ask for it to be made "
+                             "writable, or pick another folder" % (where.lower(), d, e.strerror or e))
+    if not os.access(d, os.W_OK):
+        raise ValueError("can't write to the %s looks folder '%s'" % (where.lower(), d))
     safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in name)
     path = os.path.join(d, safe + ".json")
     _backup(path)
