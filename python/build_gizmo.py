@@ -555,6 +555,10 @@ def _link_haze(node, output):
     _link(node, "sky_distance", "parent.sky_distance * 1000")
     _link(node, "use_env", "[exists parent.input2] && parent.haze_color_from!=2")
     _link(node, "use_far", "[exists parent.input2] && parent.match_horizon")
+    # An EzAtmosScatter set to output as Camera already gives the shot camera's view: read it per pixel.
+    _link(node, "env_screen", "[python -execlocal {%sret = 1 if a is not None and a.knob('output_mapping') "
+                              "and int(a['output_mapping'].getValue()) == 2 and a.input(3) is not None else 0}]"
+          % _FIND_ATMOS.replace("nuke.thisNode()", "nuke.thisGroup()"))
     _link(node, "match_distance", "parent.match_distance * 1000")
     _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
     for i, c in enumerate("rgb"):
