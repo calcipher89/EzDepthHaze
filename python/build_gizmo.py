@@ -139,13 +139,15 @@ def _tool_code(defaults):
     tool_code knob) and run from there by the buttons and knobChanged, so the gizmo needs no
     Python module at run time. python/ezdepthhaze.py is where the values are edited."""
     presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
+                           "cloud_above_camera": p.get("cloud_above_camera"),
                            "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
                    for name, p in ezdepthhaze.PRESETS)
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
-                         "surface_add", "surface_strength", "silhouette", "haze_color_gain"})
+                         "surface_add", "surface_strength", "silhouette", "haze_color_gain",
+                         "cloud_cover", "cloud_height", "cloud_size", "cloud_softness"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -508,6 +510,14 @@ def _add_knobs(group, depth_pick, env_pick):
     note = nuke.Text_Knob("shadow_note", "", "Screen space: only terrain in frame casts shadows. Shadows need "
                           "Volumetric mode or match horizon sky to step the ray; Fast mode steps 16 slabs.")
     add(note)
+    add(nuke.Text_Knob("cloud_divider", "Cloud Gaps"))
+    add(*_double("cloud_cover", "cloud cover", 0, 1, "A layer of cloud that blocks the sun except through gaps, so "
+                 "beams of light fall through them into the haze. 0 is no cloud (off), 1 all cloud; 0.8 leaves "
+                 "a few gaps.", 0.0))
+    add(*_double("cloud_height", "cloud height (m)", 0, 10000, "Altitude of the cloud layer, in metres. Higher "
+                 "makes longer beams.", 3000.0))
+    add(*_double("cloud_size", "gap size (m)", 50, 20000, "Size of the gaps and the cloud between them.", 1500.0))
+    add(*_double("cloud_softness", "gap softness", 0.01, 1, "How soft the edges of the gaps are.", 0.15))
 
     add(nuke.Text_Knob("surface_divider", "Surface Light"))
     surface_add = nuke.Boolean_Knob("surface_add", "add surface light")
@@ -608,6 +618,8 @@ def _link_haze(node, output):
     _link(node, "shadow_distance", "parent.shadow_distance * 1000")
     _link(node, "penumbra", "parent.penumbra")
     _link(node, "occluder_thickness", "parent.occluder_thickness")
+    for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness"):
+        _link(node, name, "parent." + name)
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
     _link(node, "surface_strength", "parent.surface_strength")

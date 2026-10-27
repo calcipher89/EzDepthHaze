@@ -87,6 +87,10 @@ param:
   float noiseRoughness;
   float noiseSharpness;
   float3 noiseWind;
+  float cloudCover;
+  float cloudHeight;
+  float cloudSize;
+  float cloudSoftness;
   float noiseTime;
   float noiseSeed;
   float3 sunDirection;
@@ -154,6 +158,10 @@ local:
     defineParam(noiseRoughness, "noise_roughness", 0.5f);
     defineParam(noiseSharpness, "noise_sharpness", 1.0f);
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
+    defineParam(cloudCover, "cloud_cover", 0.0f);
+    defineParam(cloudHeight, "cloud_height", 3000.0f);
+    defineParam(cloudSize, "cloud_size", 1500.0f);
+    defineParam(cloudSoftness, "cloud_softness", 0.15f);
     defineParam(noiseTime, "noise_time", 0.0f);
     defineParam(noiseSeed, "noise_seed", 1.0f);
     defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
@@ -287,6 +295,34 @@ local:
     // Sharpness steepens the noise around its middle: soft blobs become patches with edges.
     float n = clamp(0.5f + (sum / norm - 0.5f) * noiseSharpness, 0.0f, 1.0f);
     return max(1.0f + noiseAmount * 2.5f * (n - 0.5f), 0.0f);
+  }
+
+  // Cloud gaps: a layer of cloud at cloud_height that blocks the sun except through gaps. A
+  // point gets sunlight when the ray from it towards the sun crosses the layer in a gap, so
+  // gaps cast beams down through the haze. cloud_cover 0 is no cloud, 1 all cloud; the gaps
+  // are fBm noise of cloud_size, edges cloud_softness wide, drifting with the wind.
+  float cloudGap(float3 p, float3 sun)
+  {
+    if (cloudCover <= 0.0f || p.y >= cloudHeight)
+      return 1.0f;
+    if (sun.y <= 0.01f)
+      return 1.0f - cloudCover;
+    float3 q = p + sun * ((cloudHeight - p.y) / sun.y);
+    float3 c = float3((q.x - noiseWind.x * noiseTime) / cloudSize, 7.3f, (q.z - noiseWind.z * noiseTime) / cloudSize);
+    float sum = 0.0f, amp = 0.5f, norm = 0.0f;
+    for (int i = 0; i < 4; i++) {
+      sum += amp * vnoise3(c);
+      norm += amp;
+      c = float3(c.x * 2.03f + 1.7f, c.y, c.z * 2.03f + 4.1f);
+      amp *= 0.5f;
+    }
+    float n = sum / norm;
+    // fBm sits around 0.5 with a narrow spread: stretch it so cover maps evenly to how much
+    // of the sky is cloud.
+    n = clamp(0.5f + (n - 0.5f) * 3.0f, 0.0f, 1.0f);
+    float soft = max(cloudSoftness, 0.01f);
+    float e = clamp((n - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
+    return e * e * (3.0f - 2.0f * e);
   }
 
   float fogProfile(float y)
@@ -454,6 +490,7 @@ local:
       float j = jitterAt(pos, 3.0f);
       float3 sun = jitteredSun(jitterAt(pos, 5.0f), jitterAt(pos, 7.0f));
       float vis = sunVisibility(surfacePoint + n * (1.0f + 0.001f * surfaceDist), origin, sun, shadowSamples * 2, j);
+      vis *= cloudGap(surfacePoint, sun);
       float3 a = albedoFromPlate != 0 ? float3(src.x, src.y, src.z) : albedo;
       float3 lit = a * surfaceColor * (surfaceStrength * max(dot(n, sunWorld), 0.0f) * vis);
       dst() = float4(lit.x, lit.y, lit.z, vis);
@@ -531,7 +568,7 @@ local:
         float3 skyL = skyNear + (skyFar - skyNear) * w;
         if (shadows && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
           vis = sunVisibility(p, origin, sun, shadowSamples, sj);
-        float lit = vis + (1.0f - vis) * (1.0f - shadowStrength);
+        float lit = (vis + (1.0f - vis) * (1.0f - shadowStrength)) * cloudGap(p, sun);
         sunFree += scatter * sunL;
         sunIn += scatter * sunL * lit;
         skyIn += scatter * skyL;

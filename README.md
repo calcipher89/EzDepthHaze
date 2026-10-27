@@ -199,6 +199,7 @@ The sun depends on where EzAtmosScatter gets it:
 | Valley Fog | A dense fog lake in the valleys, clear air above | 10 degrees up, 30 degrees left, slightly warm |
 | Smoke Haze | Brown-orange haze, low contrast | 8 degrees up, 20 degrees left, reddened |
 | Overcast Mist | Grey-blue mist with drifting wisps, no sun shadows | None |
+| Overcast Shafts | Overcast haze with beams of sunlight through gaps in the cloud, and patches of sun on the ground | 40 degrees up, 15 degrees left, white |
 
 ### Fitted to the shot
 
@@ -250,6 +251,25 @@ speed.
 | noise sharpness | 1 | Steepens the noise: 1 is soft blobs, higher gives crisp-edged patches |
 | wind (m/s) | (5, 0, 0) | Drifts the noise over time |
 | noise seed | 1 | Changes the pattern |
+
+## Cloud gaps
+
+For overcast skies with shafts of light: a layer of cloud at *cloud height* blocks the sun
+except through gaps. A point in the haze (or on the ground, with surface light on) gets
+sunlight only when the ray from it to the sun crosses the layer in a gap, so each gap casts a
+beam down through the haze and a patch of sun where it lands. The sky light is unaffected. It
+needs the ray to be stepped (Volumetric mode), and a sun well above the horizon. The
+*Overcast Shafts* look uses it, with the layer placed above the camera and the gaps sized to
+the shot.
+
+| Knob | Default | What it does |
+| --- | --- | --- |
+| cloud cover | 0 (off) | How much of the sky is cloud: 0.8 leaves a few gaps, 1 none |
+| cloud height (m) | 3000 | Altitude of the layer; higher makes longer beams |
+| gap size (m) | 1500 | Size of the gaps and the cloud between them |
+| gap softness | 0.15 | How soft the gaps' edges are |
+
+The gaps drift with *wind*.
 
 ## Sun, shadows and surface light
 
@@ -326,6 +346,19 @@ Nuke15.1.exe --nukex -i --gpu -t examples/build_hdri_demo.py <hdri.exr> <output 
 
 It was made with Poly Haven's [Ticknock 02](https://polyhaven.com/a/ticknock_02) (CC0), a
 clear sunset. HDRIs are bright near the sun, so view the result a stop or two down.
+
+`examples/build_valley_demo.py` builds an overcast valley for the *Overcast Shafts* look: a
+glacial valley (`examples/ValleyTerrain.blink`: a winding, forested floor between granite
+walls, cut through mountains) seen from high on its side, under an HDRI sky, with the sun set
+by hand high in front of the camera so it breaks through cloud gaps. The terrain is lit by
+the sky only; EzDepthHaze adds the sun through the gaps. Pass a look as the third argument,
+or leave it out for the hand-set version:
+
+```
+Nuke15.1.exe --nukex -i --gpu -t examples/build_valley_demo.py <hdri.exr> <output folder> [look]
+```
+
+It was made with Poly Haven's [Kloppenheim 06](https://polyhaven.com/a/kloppenheim_06) (CC0).
 
 `examples/build_layer_breakdown.py <demo folder>` then adds a labelled rebuild of the result
 from its layers next to the node (plate + surface light, times transmittance, plus sun and
