@@ -156,8 +156,8 @@ local:
     float side = vc.y > 0.0f ? 1.0f : -1.0f;
     // Buttresses and alcoves: the walls step in and out along the valley, and the steps wander
     // as the wall climbs (they depend on the distance across too), so faces are broad and uneven.
-    float facet = (ridged(along / 1700.0f + side * 7.0f, ad / 1300.0f, 3) - 0.5f) * 520.0f +
-                  (fbm(along / 520.0f, ad / 520.0f + side * 3.0f, 2) - 0.5f) * 90.0f;
+    float facet = (fbm(along / 1500.0f + side * 7.0f, ad / 1200.0f, 3) - 0.5f) * 900.0f +
+                  (fbm(along / 420.0f, ad / 420.0f + side * 3.0f, 2) - 0.5f) * 60.0f;
     float d = ad + facet * clamp((ad - 250.0f) / 300.0f, 0.0f, 1.0f);
     // How high this stretch of wall stands: big faces and domes along the valley.
     float tn = clamp((fbm(along / 3200.0f + 11.0f, side * 3.0f, 3) - 0.3f) / 0.4f, 0.0f, 1.0f);
@@ -170,7 +170,7 @@ local:
     float smooth2 = 1.0f - pow(1.0f - t2, 2.2f);
     float q = t2 * 4.0f + 0.7f * vnoise(along / 700.0f, side * 9.0f);
     float stair = clamp((floor(q) + pow(q - floor(q), 2.5f) - 0.35f) / 4.0f, 0.0f, 1.0f);
-    float face = 0.78f * tall * (smooth2 + 0.12f * (stair - smooth2) * 4.0f * t2 * (1.0f - t2));
+    float face = 0.78f * tall * (smooth2 + 0.06f * (stair - smooth2) * 4.0f * t2 * (1.0f - t2));
     float h = talus + face;
     // Above the rim: granite domes near the edge, then mountains rising behind.
     float beyond = max(d - floorWidth - talusWidth - cliffWidth, 0.0f);
@@ -178,12 +178,12 @@ local:
     float blob = clamp((vnoise(along / 1400.0f, beyond / 1400.0f + side * 5.0f) - 0.45f) * 2.2f, 0.0f, 1.0f);
     float dome = 0.75f * tall * near * blob * blob * (3.0f - 2.0f * blob);
     float rb = clamp(beyond / 7000.0f, 0.0f, 1.0f);
-    float rise = rimHeight * (1.8f * rb * rb * (3.0f - 2.0f * rb) * ridged(x / 4500.0f + 3.0f, z / 4500.0f, 5) +
-                              0.35f * fbm(x / 1500.0f, z / 1500.0f, 4) * clamp(beyond / 800.0f, 0.0f, 1.0f));
+    float rise = rimHeight * (1.8f * rb * rb * (3.0f - 2.0f * rb) * ridged(x / 5000.0f + 3.0f, z / 5000.0f, 3) +
+                              0.3f * fbm(x / 2000.0f, z / 2000.0f, 3) * clamp(beyond / 800.0f, 0.0f, 1.0f));
     h += max(dome, rise * 0.6f) + rise * 0.4f;
     // Rock detail: blocky on the faces and the uplands, gentle on the floor.
     float rock = ridged(along / 260.0f, ad / 260.0f, octaves) - 0.5f;
-    h += rock * (5.0f + 25.0f * t2 + 15.0f * clamp(beyond / 400.0f, 0.0f, 1.0f));
+    h += rock * (5.0f + 25.0f * t2 * (1.0f - clamp(beyond / 400.0f, 0.0f, 1.0f)) + 6.0f * clamp(beyond / 400.0f, 0.0f, 1.0f));
     return h;
   }
 
@@ -276,7 +276,7 @@ local:
 
     float2 vc = valleyCoords(p.x, p.z);
     bool onSlab = slab(p.x, p.z) >= valley(p.x, p.z, 6) - 0.5f;
-    float rockness = onSlab ? 1.0f : clamp((slope - 0.24f) * 5.0f, 0.0f, 1.0f);
+    float rockness = onSlab ? 1.0f : clamp((slope - 0.3f) * 5.0f, 0.0f, 1.0f);
     // Trees thin out on the high, bare uplands and domes.
     float bare = clamp((p.y - rimHeight * 1.5f) / 500.0f, 0.0f, 1.0f) *
                  clamp((fbm(p.x / 300.0f, p.z / 300.0f, 3) - 0.3f) * 3.0f, 0.0f, 1.0f);
@@ -321,7 +321,7 @@ local:
     float3 lit = albedo * (sunColor * sunIntensity * max(dot(n, sunDir), 0.0f) / pi + ambient);
     if (water) {
       float3 r = skyLookup(float3(dir.x, -dir.y, dir.z));
-      lit = lit * 0.5f + r * 0.06f * occ;
+      lit = lit * 0.6f + r * 0.03f * occ;
     }
     dst() = float4(lit.x, lit.y, lit.z, t);
   }

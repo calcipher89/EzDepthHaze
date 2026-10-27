@@ -23,7 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HDRI = sys.argv[1].replace("\\", "/")
 OUT = (sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "examples", "valley_demo")).replace("\\", "/")
 LOOK = sys.argv[3] if len(sys.argv) > 3 else None
-CAMERA = [1500.0, 2300.0, 3000.0]
+CAMERA = [1000.0, 1350.0, 1500.0]
 # Sun: degrees up, and degrees left of where the camera looks.
 SUN_UP, SUN_LEFT = 40.0, 15.0
 
@@ -44,14 +44,14 @@ def build():
 
     cam = nuke.nodes.Camera3(name="ValleyCamera", xpos=600, ypos=0)
     cam["translate"].setValue(CAMERA)
-    cam["rotate"].setValue([-13, 10, 0])
+    cam["rotate"].setValue([-13, 24, 0])
     cam["focal"].setValue(24)
     cam["haperture"].setValue(36)
     cam["vaperture"].setValue(20.25)
     atmos.setInput(3, cam)
 
-    # The camera looks 10 deg round towards -X; the sun sits a little left of that.
-    az = math.radians(-10.0 - SUN_LEFT)
+    # The camera looks 24 deg round towards -X; the sun sits a little left of that.
+    az = math.radians(-24.0 - SUN_LEFT)
     up = math.radians(SUN_UP)
     sun = [math.sin(az) * math.cos(up), math.sin(up), -math.cos(az) * math.cos(up)]
     atmos["sun_from"].setValue("Manual")
@@ -83,9 +83,8 @@ def build():
     for knob in ("focal", "haperture", "vaperture"):
         terrain[k + knob].setExpression("ValleyCamera." + knob)
     # Overcast: the terrain is lit by the sky; the sun through the gaps comes from EzDepthHaze.
-    for knob, value in (("terrain_height", 6000.0), ("floor_width", 900.0), ("wall_width", 800.0),
-                        ("rim_height", 1300.0), ("sun_intensity", 0.0), ("ambient_strength", 0.9),
-                        ("sun_disc_radiance", 0.0)):
+    # The camera stands on the valley's edge; the kernel puts a granite outcrop in front of it.
+    for knob, value in (("sun_intensity", 0.0), ("ambient_strength", 0.9)):
         terrain[k + knob].setValue(value)
 
     exr = OUT + "/valley_terrain.exr"
