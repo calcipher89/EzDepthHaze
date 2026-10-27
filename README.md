@@ -87,6 +87,12 @@ The node opens on its **Easy** tab:
 
 - **look**: picking one applies it, fitted to the shot (see Presets).
 - **look strength**: from clear air (0) to the full look (1).
+- **exposure**: how bright the haze light is, in stops (+1 doubles it), without changing how
+  thick the haze is. Looks, *surprise me* and *centre sliders* leave it alone, so once it is
+  matched to the plate it stays. **match plate** sets it from the current frame: the haze over
+  the farthest terrain as bright as the plate's sky just above it, or, with no sky in frame,
+  as the plate's highlights. Check the result: a plate whose low sky is dark (ground, cloud
+  bank) pulls it down hard.
 - **haze**, **warmth**, **glow**, **shafts**, **light**, **shadow**, **fog**, **fog height**, **fog softness** and the four **texture** sliders:
   big sliders, each moving several knobs, relative to the look as applied (the middle is
   always the look):
