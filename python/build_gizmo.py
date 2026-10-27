@@ -134,7 +134,7 @@ def _double(name, label, lo, hi, tip, value):
     return knob, value
 
 
-def _tool_code(defaults):
+def _tool_code(defaults, advanced_knobs=()):
     """python/fit_to_shot.py and python/easy_mode.py with the presets, the demo's measurements,
     the look folders and the knob defaults filled in. It is stored once on the node (the hidden
     tool_code knob) and run from there by the buttons and knobChanged, so the gizmo needs no
@@ -143,8 +143,10 @@ def _tool_code(defaults):
                            "cloud_above_camera": p.get("cloud_above_camera"),
                            "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
                    for name, p in ezdepthhaze.PRESETS)
-    look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
-                        {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
+    # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
+    # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
+    look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
                          "surface_add", "surface_strength", "silhouette", "haze_color_gain",
@@ -570,8 +572,8 @@ def _add_knobs(group, depth_pick, env_pick):
             advanced = True
         elif advanced and knob.name() not in keep and knob.Class() not in ("Text_Knob", "PyScript_Knob", "Tab_Knob"):
             start[knob.name()] = group[knob.name()].toScript()
-    group["tool_code"].setValue(base64.b64encode(_tool_code(start).encode()).decode())
-    look_knobs = [name for name in start if name != "view_output"]
+    look_knobs = [name for name in start if name not in ("view_output", "units_confirmed")]
+    group["tool_code"].setValue(base64.b64encode(_tool_code(start, look_knobs).encode()).decode())
     group["knobChanged"].setValue(_knob_changed_script(look_knobs))
 
 
