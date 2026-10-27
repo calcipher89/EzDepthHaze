@@ -334,6 +334,35 @@ def surprise(n):
     return best[1]
 
 
+def _hdri_horizon(n, steps=16):
+    """Median luminance of the HDRI in the atmos node's hdri input, 2 degrees above the horizon,
+    across the camera's horizontal view. None without an atmos node, HDRI or camera."""
+    atmos, cam = _atmos(n), _camera(n)
+    if atmos is None or cam is None or not cam.knob("world_matrix"):
+        return None
+    hdri = atmos.input(0)
+    while hdri is not None and hdri.Class() in ("Dot", "NoOp"):
+        hdri = hdri.input(0)
+    if hdri is None or not hdri.width():
+        return None
+    wm = cam["world_matrix"]
+    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))
+    fov = 2.0 * math.atan(0.5 * cam["haperture"].value() / max(cam["focal"].value(), 1e-3))
+    rot = math.radians(atmos["hdri_rotation"].value()) if atmos.knob("hdri_rotation") else 0.0
+    w, h = hdri.format().width(), hdri.format().height()
+    y = h * (0.5 + 2.0 / 180.0)
+    lums = []
+    for i in range(steps):
+        az = yaw + fov * ((i + 0.5) / steps - 0.5)
+        u = (az - rot) / (2.0 * math.pi) + 0.5
+        x = (u - math.floor(u)) * w
+        lums.append(0.2126 * hdri.sample("red", x, y) + 0.7152 * hdri.sample("green", x, y) +
+                    0.0722 * hdri.sample("blue", x, y))
+    lums.sort()
+    value = lums[len(lums) // 2]
+    return value if value > 1e-4 else None
+
+
 def match_plate(n, grid=(24, 14)):
     """Set 'exposure' so the haze over the farthest terrain in this frame is as bright as the
     plate's sky just above it (the sky the terrain should fade into), or, with no sky in frame,
@@ -345,6 +374,9 @@ def match_plate(n, grid=(24, 14)):
     threshold = n["sky_threshold"].value()
     inverse = n["depth_type"].getValue() == 2
     fmt = plate.format()
+    # A premultiplied CG plate is black with alpha 0 where it has no sky: that is no sky, not a
+    # black one. Partly covered edge pixels are unpremultiplied.
+    has_alpha = "rgba.alpha" in plate.channels()
     terrain, sky_low = [], []
     for i in range(grid[0]):
         x = fmt.width() * (i + 0.5) / grid[0]
@@ -354,9 +386,15 @@ def match_plate(n, grid=(24, 14)):
             dv = plate.sample(channel, x, y)
             lum = 0.2126 * plate.sample("red", x, y) + 0.7152 * plate.sample("green", x, y) + \
                 0.0722 * plate.sample("blue", x, y)
+            a = plate.sample("alpha", x, y) if has_alpha else 1.0
             if dv <= 0 or dv >= threshold:
+                if a < 0.5 and lum < 1e-4:
+                    continue
                 column_sky.append((y, lum))
             else:
+                if a <= 0.01:
+                    continue
+                lum = lum / a if a < 1.0 else lum
                 dist = 1.0 / dv if inverse else dv
                 haze = 0.2126 * n.sample("haze_inscatter.red", x, y) + \
                     0.7152 * n.sample("haze_inscatter.green", x, y) + 0.0722 * n.sample("haze_inscatter.blue", x, y)
@@ -369,15 +407,22 @@ def match_plate(n, grid=(24, 14)):
     terrain.sort()
     far = terrain[int(len(terrain) * 0.8):]
     have = sorted(t[2] for t in far)[len(far) // 2]
-    if len(sky_low) >= 3:
+    horizon = _hdri_horizon(n)
+    if len(sky_low) >= 3 and sorted(sky_low)[len(sky_low) // 2] > 1e-4:
         target = sorted(sky_low)[len(sky_low) // 2]
         what = "the plate's sky just above the terrain"
+    elif horizon:
+        # No sky in the plate (a premultiplied CG render): the sky the terrain fades into is
+        # the HDRI's, just above the horizon across the view.
+        target = horizon
+        what = "the HDRI's sky just above the horizon (no sky in the plate)"
     else:
-        lums = sorted(t[1] for t in terrain)
-        target = lums[int(len(lums) * 0.9)]
-        what = "the plate's highlights (no sky in frame)"
-    if have <= 1e-6 or target <= 1e-6:
-        raise ValueError("the haze or the plate is black here: nothing to match")
+        # The plate's own highlights say little about the sky (backlit terrain is nearly
+        # black), so with no sky anywhere leave exposure to the artist.
+        raise ValueError("no sky to match: the plate has none in frame and the atmos node has no HDRI. "
+                         "Set exposure by eye.")
+    if have <= 1e-6:
+        raise ValueError("there is no haze over the terrain here: nothing to match")
     current = n["easy_exposure"].value()
     stops = min(max(current + math.log(target / have, 2.0), -4.0), 4.0)
     n["easy_exposure"].setValue(round(stops, 2))

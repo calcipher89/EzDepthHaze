@@ -90,9 +90,10 @@ The node opens on its **Easy** tab:
 - **exposure**: how bright the haze light is, in stops (+1 doubles it), without changing how
   thick the haze is. Looks, *surprise me* and *centre sliders* leave it alone, so once it is
   matched to the plate it stays. **match plate** sets it from the current frame: the haze over
-  the farthest terrain as bright as the plate's sky just above it, or, with no sky in frame,
-  as the plate's highlights. Check the result: a plate whose low sky is dark (ground, cloud
-  bank) pulls it down hard.
+  the farthest terrain as bright as the plate's sky just above it. A premultiplied CG plate
+  (black, alpha 0, where there is no sky) uses the HDRI's sky just above the horizon instead,
+  from the atmos node's hdri input; with no sky in either it says so and leaves exposure to
+  you. Check the result: a low sky that is dark (ground, cloud bank) pulls it down hard.
 - **haze**, **warmth**, **glow**, **shafts**, **light**, **shadow**, **fog**, **fog height**, **fog softness** and the four **texture** sliders:
   big sliders, each moving several knobs, relative to the look as applied (the middle is
   always the look):

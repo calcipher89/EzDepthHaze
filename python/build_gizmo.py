@@ -169,7 +169,7 @@ def _button(call):
 # Easy knobs knobChanged reacts to, and what it calls.
 EASY_SLIDERS = ["look_strength", "easy_haze", "easy_warmth", "easy_glow", "easy_shafts", "easy_light",
                 "easy_shadow", "easy_fog", "easy_fog_height", "easy_fog_softness", "easy_texture",
-                "easy_texture_scale", "easy_texture_detail", "easy_texture_sharpness"]
+                "easy_texture_scale", "easy_texture_detail", "easy_texture_sharpness", "easy_exposure"]
 VISIBILITY = ["vis_near", "vis_far", "vis_fog"]
 
 
@@ -257,8 +257,9 @@ def _add_easy_knobs(add):
                         "haze is. Looks and surprise me leave it alone, so it stays matched to the plate.")
     add(exposure, 0.0)
     match = nuke.PyScript_Knob("match_plate", "match plate", _button("d['easy_message'](d['match_plate'](n))"))
-    match.setTooltip("Sets exposure from this frame: the haze over the farthest terrain as bright as the plate's "
-                     "sky just above it, or, with no sky in frame, as the plate's highlights.")
+    match.setTooltip("Sets exposure from this frame: the haze over the farthest terrain as bright as the sky it "
+                     "should fade into: the plate's sky just above it, or, with no sky in the plate (a "
+                     "premultiplied CG render), the HDRI's sky just above the horizon.")
     match.clearFlag(nuke.STARTLINE)
     add(match)
 
