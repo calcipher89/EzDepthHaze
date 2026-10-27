@@ -1,12 +1,13 @@
-// ValleyTerrain: like DemoTerrain, but a deep glacial valley (granite walls, a forested floor,
-// uplands beyond the rim) seen from the rim, for trying
-// EzDepthHaze without a CG render. Writes the lit terrain in rgb and the distance from
-// the camera in metres in alpha (0 where the ray reaches the sky).
+// ValleyTerrain: a deep glacial valley in granite country, rendered through a Nuke camera, for
+// trying EzDepthHaze's overcast looks without a CG render. Writes the lit terrain in rgb and the
+// distance from the camera in metres in alpha (0 where the ray reaches the sky).
 //
-// Camera: pass the Camera node's world matrix rows (rotation part) and position, plus
-// focal length and film back, exactly as the gizmo's knobs expect. Distances and heights
-// are in metres, +Y is up. The `sky` input is a lat-long (same convention as
-// EzAtmosScatter) used for the sky pixels and the ambient light.
+// The valley: a flat, winding floor of forest and meadow with a river, forested talus slopes
+// at the foot of sheer, faceted granite walls, domes along the rim, and mountains beyond. A
+// bare granite slab sits just under the camera, as on a lookout. It is lit by the `sky`
+// lat-long (same convention as EzAtmosScatter) with soft occlusion in the creases, plus an
+// optional sun. Distances and heights are in metres, +Y up; the valley runs along
+// valley_direction (degrees from -Z towards +X).
 
 kernel ValleyTerrain : ImageComputationKernel<ePixelWise>
 {
@@ -25,51 +26,56 @@ param:
   float3 sunDirection;
   float3 sunColor;
   float sunIntensity;
-  float sunDiscRadiance;
   float ambientStrength;
-  float terrainHeight;
-  float terrainScale;
-  float seed;
-  float seaLevel;
   float valleyDirection;
   float floorWidth;
-  float wallWidth;
+  float talusWidth;
+  float cliffWidth;
   float rimHeight;
   float meander;
+  float slabRadius;
+  float2 slabOffset;
+  float slabDrop;
+  float seed;
 
 local:
   float pi;
   float3 sunDir;
+  float2 slabCentre;
 
   void define()
   {
     defineParam(camRow0, "cam_row0", float3(1.0f, 0.0f, 0.0f));
     defineParam(camRow1, "cam_row1", float3(0.0f, 1.0f, 0.0f));
     defineParam(camRow2, "cam_row2", float3(0.0f, 0.0f, 1.0f));
-    defineParam(camPosition, "cam_position", float3(0.0f, 2400.0f, 0.0f));
-    defineParam(focal, "focal", 35.0f);
+    defineParam(camPosition, "cam_position", float3(0.0f, 1500.0f, 0.0f));
+    defineParam(focal, "focal", 24.0f);
     defineParam(haperture, "haperture", 36.0f);
     defineParam(vaperture, "vaperture", 20.25f);
-    defineParam(sunDirection, "sun_direction", float3(-0.2f, 0.08f, -1.0f));
-    defineParam(sunColor, "sun_color", float3(1.0f, 0.55f, 0.25f));
-    defineParam(sunIntensity, "sun_intensity", 4.0f);
-    defineParam(sunDiscRadiance, "sun_disc_radiance", 2000.0f);
+    defineParam(sunDirection, "sun_direction", float3(-0.3f, 0.6f, -0.7f));
+    defineParam(sunColor, "sun_color", float3(1.0f, 0.93f, 0.82f));
+    defineParam(sunIntensity, "sun_intensity", 0.0f);
     defineParam(ambientStrength, "ambient_strength", 1.0f);
-    defineParam(terrainHeight, "terrain_height", 2600.0f);
-    defineParam(terrainScale, "terrain_scale", 9000.0f);
-    defineParam(seed, "seed", 2.0f);
-    defineParam(seaLevel, "sea_level", -1e9f);
     defineParam(valleyDirection, "valley_direction", 0.0f);
-    defineParam(floorWidth, "floor_width", 500.0f);
-    defineParam(wallWidth, "wall_width", 450.0f);
-    defineParam(rimHeight, "rim_height", 1000.0f);
-    defineParam(meander, "meander", 900.0f);
+    defineParam(floorWidth, "floor_width", 700.0f);
+    defineParam(talusWidth, "talus_width", 400.0f);
+    defineParam(cliffWidth, "cliff_width", 450.0f);
+    defineParam(rimHeight, "rim_height", 1200.0f);
+    defineParam(meander, "meander", 700.0f);
+    defineParam(slabRadius, "slab_radius", 70.0f);
+    defineParam(slabOffset, "slab_offset", float2(80.0f, 70.0f));
+    defineParam(slabDrop, "slab_drop", 60.0f);
+    defineParam(seed, "seed", 3.0f);
   }
 
   void init()
   {
     pi = 3.14159265358979f;
     sunDir = normalize(sunDirection);
+    // The outcrop sits slab_offset (right, forward) of the camera, along the ground.
+    float2 right = normalize(float2(camRow0.x, camRow2.x));
+    float2 fwd = normalize(float2(-camRow0.z, -camRow2.z));
+    slabCentre = float2(camPosition.x, camPosition.z) + right * slabOffset.x + fwd * slabOffset.y;
   }
 
   float hash2(float x, float z)
@@ -89,7 +95,6 @@ local:
     return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uz;
   }
 
-  // Fractal noise, 0..1.
   float fbm(float x, float z, int octaves)
   {
     float sum = 0.0f, amp = 0.5f, norm = 0.0f;
@@ -105,7 +110,6 @@ local:
     return sum / norm;
   }
 
-  // Ridged fractal noise, 0..1: sharp crests.
   float ridged(float x, float z, int octaves)
   {
     float sum = 0.0f, amp = 0.5f, norm = 0.0f;
@@ -122,37 +126,70 @@ local:
     return sum / norm;
   }
 
-  // A glacial valley carved through mountains: a flat, winding, forested floor between
-  // near-vertical granite walls that rise straight into the peaks around it, which keep
-  // rising into higher ranges further off. The valley runs along valley_direction (degrees
-  // from -Z towards +X); rim_height is about how high the walls stand above the floor.
-  float height(float x, float z, int octaves)
+  // Valley coordinates: distance along it, and signed distance across it from the wandering
+  // centre of the floor.
+  float2 valleyCoords(float x, float z)
   {
     float a = valleyDirection * pi / 180.0f;
     float along = x * sin(a) - z * cos(a);
     float across = x * cos(a) + z * sin(a);
-    // The floor's centre wanders.
-    float centre = meander * (sin(along / 3500.0f) + 0.6f * (vnoise(along / 2500.0f, 4.0f) - 0.5f));
-    float d = fabs(across - centre);
-    // The mountains the valley is cut through: higher further from it.
-    float far = clamp((d - floorWidth - wallWidth) / 8000.0f, 0.0f, 1.0f);
-    float mountains = rimHeight * (0.8f + 1.1f * ridged(x / 7000.0f, z / 7000.0f, octaves) + 1.4f * far *
-                      ridged(x / 9000.0f + 5.0f, z / 9000.0f, 4));
-    // The cut: flat floor, then walls that steepen into cliffs and meet the mountains.
-    float u = clamp((d - floorWidth) / wallWidth, 0.0f, 1.0f);
-    float wall = 1.0f - pow(1.0f - u, 2.4f);
-    float h = mountains * wall;
-    // Gullies down the walls (noise stretched across the valley, so it runs down the faces),
-    // and a little roughness on the floor.
-    float gully = fbm(along / 110.0f, across / 500.0f, 4) - 0.5f;
-    h += gully * 260.0f * u * (1.0f - u) * 4.0f + (fbm(x / 200.0f, z / 200.0f, 3) - 0.5f) * 6.0f;
+    float centre = meander * (sin(along / 2600.0f) + 0.6f * (vnoise(along / 1800.0f, 4.0f) - 0.5f));
+    return float2(along, across - centre);
+  }
+
+  // The bare granite outcrop in front of the camera: a rounded, cracked hump of rock.
+  float slab(float x, float z)
+  {
+    float dx = x - slabCentre.x + 45.0f * (fbm(x / 90.0f, z / 90.0f, 3) - 0.5f);
+    float dz = z - slabCentre.y + 45.0f * (fbm(x / 90.0f + 7.0f, z / 90.0f, 3) - 0.5f);
+    float r2 = dx * dx + dz * dz;
+    float rough = (fbm(x / 20.0f, z / 20.0f, 4) - 0.5f) * 8.0f - 3.0f * (1.0f - ridged(x / 40.0f, z / 40.0f, 2)) +
+                  (vnoise(x / 4.0f, z / 4.0f) - 0.5f) * 1.2f;
+    return camPosition.y - slabDrop - r2 / (2.0f * slabRadius) + rough;
+  }
+
+  float valley(float x, float z, int octaves)
+  {
+    float2 vc = valleyCoords(x, z);
+    float along = vc.x;
+    float ad = fabs(vc.y);
+    float side = vc.y > 0.0f ? 1.0f : -1.0f;
+    // Buttresses and alcoves: the walls step in and out along the valley, and the steps wander
+    // as the wall climbs (they depend on the distance across too), so faces are broad and uneven.
+    float facet = (ridged(along / 1700.0f + side * 7.0f, ad / 1300.0f, 3) - 0.5f) * 520.0f +
+                  (fbm(along / 520.0f, ad / 520.0f + side * 3.0f, 2) - 0.5f) * 90.0f;
+    float d = ad + facet * clamp((ad - 250.0f) / 300.0f, 0.0f, 1.0f);
+    // How high this stretch of wall stands: big faces and domes along the valley.
+    float tn = clamp((fbm(along / 3200.0f + 11.0f, side * 3.0f, 3) - 0.3f) / 0.4f, 0.0f, 1.0f);
+    float tall = rimHeight * (0.65f + 0.75f * tn * tn * (3.0f - 2.0f * tn));
+    // Forested talus at the foot (a concave apron), then the face, broken by ledges.
+    float t1 = clamp((d - floorWidth) / talusWidth, 0.0f, 1.0f);
+    float talus = 0.22f * tall * pow(t1, 1.7f);
+    float t2 = clamp((d - floorWidth - talusWidth) / cliffWidth, 0.0f, 1.0f);
+    // Sheer above the talus, rounding over at the rim.
+    float smooth2 = 1.0f - pow(1.0f - t2, 2.2f);
+    float q = t2 * 4.0f + 0.7f * vnoise(along / 700.0f, side * 9.0f);
+    float stair = clamp((floor(q) + pow(q - floor(q), 2.5f) - 0.35f) / 4.0f, 0.0f, 1.0f);
+    float face = 0.78f * tall * (smooth2 + 0.12f * (stair - smooth2) * 4.0f * t2 * (1.0f - t2));
+    float h = talus + face;
+    // Above the rim: granite domes near the edge, then mountains rising behind.
+    float beyond = max(d - floorWidth - talusWidth - cliffWidth, 0.0f);
+    float near = clamp(beyond / 300.0f, 0.0f, 1.0f) * exp(-beyond * beyond / (1800.0f * 1800.0f));
+    float blob = clamp((vnoise(along / 1400.0f, beyond / 1400.0f + side * 5.0f) - 0.45f) * 2.2f, 0.0f, 1.0f);
+    float dome = 0.75f * tall * near * blob * blob * (3.0f - 2.0f * blob);
+    float rb = clamp(beyond / 7000.0f, 0.0f, 1.0f);
+    float rise = rimHeight * (1.8f * rb * rb * (3.0f - 2.0f * rb) * ridged(x / 4500.0f + 3.0f, z / 4500.0f, 5) +
+                              0.35f * fbm(x / 1500.0f, z / 1500.0f, 4) * clamp(beyond / 800.0f, 0.0f, 1.0f));
+    h += max(dome, rise * 0.6f) + rise * 0.4f;
+    // Rock detail: blocky on the faces and the uplands, gentle on the floor.
+    float rock = ridged(along / 260.0f, ad / 260.0f, octaves) - 0.5f;
+    h += rock * (5.0f + 25.0f * t2 + 15.0f * clamp(beyond / 400.0f, 0.0f, 1.0f));
     return h;
   }
 
-  // Terrain with water filling everything below sea_level (off by default).
-  float surface(float x, float z, int octaves)
+  float height(float x, float z, int octaves)
   {
-    return max(height(x, z, octaves), seaLevel);
+    return max(valley(x, z, octaves), slab(x, z));
   }
 
   float3 skyLookup(float3 d)
@@ -167,6 +204,25 @@ local:
     return float3(c.x, c.y, c.z);
   }
 
+  // How open to the sky a point is: lower where the ground around it stands higher (creases,
+  // the foot of walls, the valley floor between them).
+  float openness(float3 p)
+  {
+    float o = 1.0f;
+    for (int r = 0; r < 3; r++) {
+      float radius = r == 0 ? 60.0f : (r == 1 ? 300.0f : 1200.0f);
+      float scale = r == 0 ? 80.0f : (r == 1 ? 400.0f : 1600.0f);
+      float rise = 0.0f;
+      for (int k = 0; k < 6; k++) {
+        float a = k * pi / 3.0f + r;
+        float hk = height(p.x + radius * cos(a), p.z + radius * sin(a), 3);
+        rise += max(hk - p.y, 0.0f);
+      }
+      o *= clamp(1.0f - rise / 6.0f / scale, 0.25f, 1.0f);
+    }
+    return o;
+  }
+
   void process(int2 pos)
   {
     float u = (pos.x - ref.bounds.x1 + 0.5f) / ref.bounds.width() - 0.5f;
@@ -174,90 +230,98 @@ local:
     float3 camDir = float3(u * haperture / focal, v * vaperture / focal, -1.0f);
     float3 dir = normalize(float3(dot(camRow0, camDir), dot(camRow1, camDir), dot(camRow2, camDir)));
 
-    // March until the ray drops below the terrain.
-    float t = 10.0f;
+    // March until the ray drops below the terrain (small steps: the walls are near vertical).
+    float t = 5.0f;
     bool hit = false;
-    for (int i = 0; i < 1200; i++) {
+    for (int i = 0; i < 2500; i++) {
       float3 p = camPosition + dir * t;
-      float dy = p.y - surface(p.x, p.z, 7);
+      float dy = p.y - height(p.x, p.z, 6);
       if (dy < 0.001f * t) {
         hit = true;
         break;
       }
-      if (t > 250000.0f) {
-        // Far enough that the terrain would be lost in haze anyway: downward rays count
-        // as hitting it here, so the haze has a depth to work with.
+      if (t > 150000.0f) {
         hit = dir.y < 0.0f;
         break;
       }
-      if (p.y > terrainHeight * 1.5f && dir.y > 0.0f)
+      if (p.y > rimHeight * 4.0f && dir.y > 0.0f)
         break;
-      t += max(dy * 0.4f, 1.0f + 0.0015f * t);
+      t += max(dy * 0.25f, 0.5f + 0.001f * t);
     }
-
-    // Downward rays that ran out of steps before reaching the terrain still end on it,
-    // far away; otherwise they would show sky below the horizon.
     if (!hit && dir.y < 0.0f) {
       hit = true;
-      t = min(t, 250000.0f);
+      t = min(t, 150000.0f);
     }
-
     if (!hit) {
       float3 c = skyLookup(dir);
-      float mu = dot(dir, sunDir);
-      float disc = clamp((mu - cos(0.5f * pi / 180.0f)) / 0.00002f, 0.0f, 1.0f);
-      c += sunColor * sunDiscRadiance * disc;
       dst() = float4(c.x, c.y, c.z, 0.0f);
       return;
     }
 
-    // Refine the hit a little.
-    float tPrev = t - max(1.0f + 0.0015f * t, 0.0f);
-    for (int i = 0; i < 10; i++) {
+    float tPrev = t - max(0.5f + 0.001f * t, 0.0f);
+    for (int i = 0; i < 12; i++) {
       float tm = 0.5f * (t + tPrev);
       float3 pm = camPosition + dir * tm;
-      if (pm.y - surface(pm.x, pm.z, 7) < 0.0f)
+      if (pm.y - height(pm.x, pm.z, 6) < 0.0f)
         t = tm;
       else
         tPrev = tm;
     }
     float3 p = camPosition + dir * t;
-    float e = 4.0f + 0.002f * t;
-    float hx = surface(p.x + e, p.z, 7) - surface(p.x - e, p.z, 7);
-    float hz = surface(p.x, p.z + e, 7) - surface(p.x, p.z - e, 7);
+    float e = 1.5f + 0.0015f * t;
+    float hx = height(p.x + e, p.z, 6) - height(p.x - e, p.z, 6);
+    float hz = height(p.x, p.z + e, 6) - height(p.x, p.z - e, 6);
     float3 n = normalize(float3(-hx, 2.0f * e, -hz));
-
-    // Soft shadow from the terrain towards the sun.
-    float shadow = 1.0f;
-    float s = 30.0f;
-    for (int i = 0; i < 80; i++) {
-      float3 q = p + sunDir * s;
-      float dq = q.y - surface(q.x, q.z, 5);
-      shadow = min(shadow, clamp(8.0f * dq / s, 0.0f, 1.0f));
-      if (shadow <= 0.0f || q.y > terrainHeight * 1.2f)
-        break;
-      s += max(dq * 0.5f, 20.0f + 0.01f * s);
-    }
-
     float slope = 1.0f - n.y;
-    // Forest on the floor and gentle slopes, pale granite on the walls.
-    float patch = fbm(p.x / 300.0f, p.z / 300.0f, 3);
-    float3 grass = float3(0.03f, 0.045f, 0.025f) + float3(0.02f, 0.012f, 0.005f) * patch;
-    float3 rock = float3(0.32f, 0.3f, 0.27f);
-    float3 albedo = grass + (rock - grass) * clamp((slope - 0.3f) * 3.0f + (patch - 0.65f) * 2.0f, 0.0f, 1.0f);
-    bool water = p.y <= seaLevel + 0.5f;
-    if (water) {
-      // Dark water with a little of the sky reflected in it.
-      n = float3(0.0f, 1.0f, 0.0f);
-      albedo = float3(0.02f, 0.03f, 0.035f);
+
+    float2 vc = valleyCoords(p.x, p.z);
+    bool onSlab = slab(p.x, p.z) >= valley(p.x, p.z, 6) - 0.5f;
+    float rockness = onSlab ? 1.0f : clamp((slope - 0.24f) * 5.0f, 0.0f, 1.0f);
+    // Trees thin out on the high, bare uplands and domes.
+    float bare = clamp((p.y - rimHeight * 1.5f) / 500.0f, 0.0f, 1.0f) *
+                 clamp((fbm(p.x / 300.0f, p.z / 300.0f, 3) - 0.3f) * 3.0f, 0.0f, 1.0f);
+    rockness = max(rockness, bare);
+
+    // Forest: a canopy of crowns, light tops and dark gaps; meadows on the floor here and there.
+    // Detail finer than a few pixels fades to its average with distance (no moire).
+    float lodFine = clamp(1.0f - t / 2500.0f, 0.0f, 1.0f);
+    float lodMid = clamp(1.0f - t / 12000.0f, 0.0f, 1.0f);
+    float crowns = fbm(p.x / 7.0f, p.z / 7.0f, 3);
+    float canopy = 0.45f + (clamp((crowns - 0.35f) * 2.2f, 0.0f, 1.0f) - 0.45f) * lodFine;
+    float stands = fbm(p.x / 140.0f, p.z / 140.0f, 4);
+    float3 forest = (float3(0.018f, 0.03f, 0.016f) + float3(0.045f, 0.05f, 0.022f) * canopy) * (0.55f + 0.9f * stands);
+    float meadow = clamp((fbm(p.x / 500.0f + 9.0f, p.z / 500.0f, 3) - 0.62f) * 8.0f, 0.0f, 1.0f) *
+                   clamp(1.0f - slope * 8.0f, 0.0f, 1.0f) * clamp(1.0f - p.y / 60.0f, 0.0f, 1.0f);
+    forest = forest + (float3(0.09f, 0.095f, 0.045f) - forest) * meadow;
+    // Granite: pale, with vertical water streaks and darker lichen patches.
+    float streak = 0.5f + (fbm(vc.x / 25.0f, p.y / 400.0f, 3) - 0.5f) * lodMid;
+    float lichen = 0.5f + (fbm(p.x / 60.0f, p.z / 60.0f + p.y / 80.0f, 3) - 0.5f) * lodMid;
+    float tone = fbm(p.x / 600.0f + 2.0f, p.z / 600.0f + p.y / 500.0f, 3);
+    float3 granite = float3(0.42f, 0.4f, 0.36f) * (0.6f + 0.6f * streak) * (0.75f + 0.35f * lichen) * (0.7f + 0.6f * tone);
+    if (onSlab) {
+      // Joints and dark weathering on the outcrop.
+      float joints = clamp((ridged(p.x / 22.0f, p.z / 22.0f, 2) - 0.78f) * 6.0f, 0.0f, 1.0f);
+      granite = granite * (1.0f - 0.65f * joints) * (0.6f + 0.6f * fbm(p.x / 9.0f, p.z / 9.0f, 3));
     }
+    float3 albedo = forest + (granite - forest) * rockness;
+    // Canopy bumps for the light to catch.
+    if (rockness < 0.5f && lodFine > 0.0f) {
+      float bx = fbm((p.x + 2.0f) / 7.0f, p.z / 7.0f, 2) - fbm((p.x - 2.0f) / 7.0f, p.z / 7.0f, 2);
+      float bz = fbm(p.x / 7.0f, (p.z + 2.0f) / 7.0f, 2) - fbm(p.x / 7.0f, (p.z - 2.0f) / 7.0f, 2);
+      n = normalize(n + float3(-bx, 0.0f, -bz) * 1.5f * lodFine);
+    }
+    // River along the floor.
+    float river = fabs(vc.y + 120.0f * (vnoise(vc.x / 700.0f, 2.0f) - 0.5f));
+    bool water = !onSlab && river < 7.0f && p.y < 20.0f;
+
+    float occ = openness(p);
     float3 skyUp = skyLookup(float3(0.0f, 1.0f, 0.0f));
-    float3 skyHorizon = skyLookup(normalize(float3(-sunDir.x, 0.05f, -sunDir.z)));
-    float3 ambient = (skyUp * (0.5f + 0.5f * n.y) + skyHorizon * 0.3f) * ambientStrength;
-    float3 lit = albedo * (sunColor * sunIntensity * max(dot(n, sunDir), 0.0f) * shadow / pi + ambient);
+    float3 skySide = skyLookup(normalize(float3(n.x, 0.25f, n.z)));
+    float3 ambient = (skyUp * (0.45f + 0.55f * n.y) + skySide * 0.35f * (1.0f - n.y)) * ambientStrength * occ;
+    float3 lit = albedo * (sunColor * sunIntensity * max(dot(n, sunDir), 0.0f) / pi + ambient);
     if (water) {
       float3 r = skyLookup(float3(dir.x, -dir.y, dir.z));
-      lit += r * (0.02f + 0.3f * pow(1.0f - fabs(dir.y), 5.0f));
+      lit = lit * 0.5f + r * 0.06f * occ;
     }
     dst() = float4(lit.x, lit.y, lit.z, t);
   }
