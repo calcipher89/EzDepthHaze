@@ -4,9 +4,10 @@ Run from a terminal (NukeX licence, -i so BlinkScript can compile):
 
     Nuke15.1.exe --nukex -i -t python/build_gizmo.py
 
-The group has three inputs: the plate (with depth in a channel), an optional Camera,
-and an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
-atmos_haze_color layer lights the haze and whose haze settings can be inherited.
+The group has four inputs: the plate (with depth in a channel), an optional Camera,
+an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
+atmos_haze_color layer lights the haze and whose haze settings can be inherited, and an
+optional lat-long `clouds` input (normally the HDRI) whose cloud gaps can let the sun through.
 """
 
 import base64
@@ -139,13 +140,16 @@ def _tool_code(defaults):
     tool_code knob) and run from there by the buttons and knobChanged, so the gizmo needs no
     Python module at run time. python/ezdepthhaze.py is where the values are edited."""
     presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
+                           "cloud_above_camera": p.get("cloud_above_camera"),
                            "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
                    for name, p in ezdepthhaze.PRESETS)
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) |
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
-                         "surface_add", "surface_strength", "silhouette", "haze_color_gain"})
+                         "surface_add", "surface_strength", "silhouette", "haze_color_gain",
+                         "cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
+                         "cloud_breakup_size"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -508,6 +512,25 @@ def _add_knobs(group, depth_pick, env_pick):
     note = nuke.Text_Knob("shadow_note", "", "Screen space: only terrain in frame casts shadows. Shadows need "
                           "Volumetric mode or match horizon sky to step the ray; Fast mode steps 16 slabs.")
     add(note)
+    add(nuke.Text_Knob("cloud_divider", "Cloud Gaps"))
+    add(*_double("cloud_cover", "cloud cover", 0, 1, "A layer of cloud that blocks the sun except through gaps, so "
+                 "beams of light fall through them into the haze. 0 is no cloud (off), 1 all cloud; 0.8 leaves "
+                 "a few gaps.", 0.0))
+    add(*_double("cloud_height", "cloud height (m)", 0, 10000, "Altitude of the cloud layer, in metres. Higher "
+                 "makes longer beams.", 3000.0))
+    add(*_double("cloud_size", "gap size (m)", 50, 20000, "Size of the gaps and the cloud between them.", 1500.0))
+    add(*_double("cloud_softness", "gap softness", 0.01, 1, "How soft the edges of the gaps are.", 0.15))
+    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Clouds Input"])
+    cloud_from.setTooltip("Noise: made-up gaps of gap size. Clouds Input: the gaps in the sky plugged into the "
+                          "clouds input (normally the HDRI) work as a gobo: blue sky lets the sun through, cloud "
+                          "doesn't, so the beams line up with the gaps you see. Cloud cover is then how blue a gap "
+                          "must be; cloud height is how high those clouds are. Falls back to Noise with nothing "
+                          "plugged in.")
+    add(cloud_from)
+    add(*_double("cloud_breakup", "breakup", 0, 1, "Noise that roughens the edges of the gaps and thins them in "
+                 "streaks, so the beams break up instead of being clean cones of light. 0 is off.", 0.0))
+    add(*_double("cloud_breakup_size", "breakup size (m)", 10, 5000, "Size of the breakup noise on the cloud "
+                 "layer. Smaller is finer streaks in the beams.", 300.0))
 
     add(nuke.Text_Knob("surface_divider", "Surface Light"))
     surface_add = nuke.Boolean_Knob("surface_add", "add surface light")
@@ -608,6 +631,10 @@ def _link_haze(node, output):
     _link(node, "shadow_distance", "parent.shadow_distance * 1000")
     _link(node, "penumbra", "parent.penumbra")
     _link(node, "occluder_thickness", "parent.occluder_thickness")
+    for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
+                 "cloud_breakup_size"):
+        _link(node, name, "parent." + name)
+    _link(node, "cloud_from_map", "[exists parent.input3] && parent.cloud_from==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
     _link(node, "surface_strength", "parent.surface_strength")
@@ -627,6 +654,14 @@ def build():
     plate = nuke.nodes.Input(name="plate", xpos=0, ypos=-300)
     nuke.nodes.Input(name="camera", xpos=300, ypos=-300)
     atmos = nuke.nodes.Input(name="atmos", xpos=600, ypos=-300)
+    clouds_in = nuke.nodes.Input(name="clouds", xpos=1050, ypos=-300)
+    # A tiny black stand-in keeps the kernel's cloud input fed when nothing is plugged in.
+    no_clouds = nuke.nodes.Constant(name="NoClouds", xpos=1150, ypos=-300)
+    no_clouds["format"].setValue(nuke.addFormat("8 4 1 EzDepthHaze_tiny"))
+    clouds = nuke.nodes.Switch(name="CloudsOrNone", xpos=1050, ypos=-200)
+    clouds.setInput(0, no_clouds)
+    clouds.setInput(1, clouds_in)
+    clouds["which"].setExpression("[exists parent.input3]")
 
     # The depth goes to red of its own stream; the haze colour lat-long to rgb of another.
     depth_pick = nuke.nodes.Copy(name="DepthPick", from0="depth.Z", to0="rgba.red", xpos=150, ypos=-200)
@@ -706,6 +741,8 @@ def build():
     tinted = []
     for name, src, x in (("HazeSunTint", env_sun, 450), ("HazeSkyTint", env_sky, 500)):
         m = nuke.nodes.Multiply(name=name, channels="rgb", xpos=x, ypos=-80)
+        # Split the value per channel first, or every channel takes the red expression.
+        m["value"].setSingleValue(False)
         for i, c in enumerate("rgb"):
             m["value"].setExpression("parent.haze_tint.%s" % c, i)
         m.setInput(0, src)
@@ -735,6 +772,7 @@ def build():
         node.setInput(2, sun_tinted)
         node.setInput(3, sky_tinted)
         node.setInput(4, sky_light)
+        node.setInput(5, clouds)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)
         if key in ("transmittance", "sun", "sky", "sun_free", "masks"):

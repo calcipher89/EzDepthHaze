@@ -274,13 +274,15 @@ def _plain(n, preset):
     """The preset as tuned, for when there is no depth or camera to fit it to."""
     for k, v in preset["knobs"].items():
         n[k].setValue(v)
+    cam = _camera(n)
+    if n["plate_type"].getValue() == 0 and cam is not None and cam.knob("world_matrix"):
+        height = cam["world_matrix"].getValue(7) * n["depth_scale"].getValue()
+    else:
+        height = n["latlong_camera_height"].getValue()
     if preset["fog_below_camera"] is not None:
-        cam = _camera(n)
-        if n["plate_type"].getValue() == 0 and cam is not None and cam.knob("world_matrix"):
-            height = cam["world_matrix"].getValue(7) * n["depth_scale"].getValue()
-        else:
-            height = n["latlong_camera_height"].getValue()
         n["fog_top"].setValue(height - preset["fog_below_camera"])
+    if preset.get("cloud_above_camera"):
+        n["cloud_height"].setValue(height + preset["cloud_above_camera"])
 
 
 def fit(n, name=None):
@@ -314,7 +316,7 @@ def fit(n, name=None):
         knobs["fog_density"] = preset["knobs"]["fog_density"] / scale
     if "fog_softness" in knobs:
         knobs["fog_softness"] = preset["knobs"]["fog_softness"] * relief
-    for k in ("noise_size",):
+    for k in ("noise_size", "cloud_size", "cloud_breakup_size"):
         if k in knobs:
             knobs[k] = preset["knobs"][k] * scale
     for k in knobs:
@@ -322,6 +324,8 @@ def fit(n, name=None):
     if preset["fog_below_camera"] is not None:
         fog_top = _place(ref["camera"] - preset["fog_below_camera"], ref["alt"], st["alt"])
         n["fog_top"].setValue(round(fog_top, 1))
+    if preset.get("cloud_above_camera"):
+        n["cloud_height"].setValue(round(st["camera"] + preset["cloud_above_camera"] * scale, 1))
     wind = n["noise_wind"].value()
     speed = math.sqrt(sum(x * x for x in wind)) or 1.0
     n["noise_wind"].setValue([x / speed * 5.0 * scale for x in wind] if any(wind) else [5.0 * scale, 0.0, 0.0])
