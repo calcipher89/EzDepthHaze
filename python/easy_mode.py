@@ -557,6 +557,9 @@ def analyze(n):
         offer = sun_suggestion(n, PRESETS[n["preset"].value()])
         if offer is not None:
             warn.append(offer[0].split("\n\n")[0])
+        clouds = cloud_setup(n, st)
+        if clouds:
+            done.append(clouds)
     text = "\n".join(done + ([""] + ["Note: " + w for w in warn] if warn else []))
     easy_message("EzDepthHaze analyze\n\n" + text)
     return text

@@ -32,7 +32,7 @@ VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"
                 ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
                 ("Haze Shadow", "shadow"), ("Haze Fog", "fog"), ("Haze Wisps", "wisps"),
                 ("Surface Sunlight", "surface"), ("Surface Sun Visibility", "visibility"),
-                ("World Position (P)", "P"), ("Normals (N)", "N")]
+                ("World Position (P)", "P"), ("Normals (N)", "N"), ("Cloud Gaps (sky)", "gaps")]
 
 # Camera settings, read from hidden knobs on the group (cam_world_matrix, cam_focal, ...)
 # that find the camera through any Dots or NoOps in the camera input. The default after
@@ -836,7 +836,34 @@ def build():
     dimmed = merge("PlateTimesT", "multiply", passes["transmittance"], lit_plate, 0, 100)
     hazed = merge("Hazed", "plus", inscatter, dimmed, 0, 140)
 
-    sources = {"hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
+    # Cloud Gaps view: the clouds lat-long, dim where cloud blocks the sun and lit orange where
+    # the sky counts as a gap (the same key as the kernel, without breakup), with a ring round
+    # the sun. Stretched to the plate's frame for viewing.
+    gaps = nuke.nodes.Expression(name="CloudGapsView", xpos=1050, ypos=-150)
+    gaps.setInput(0, clouds)
+    sun = "Pass_sun.EzDepthHaze_sun_direction"
+    temps = [("lon", "((x + 0.5) / width - 0.5) * 2 * pi + Pass_sun.EzDepthHaze_env_rotation * pi / 180"),
+             ("lat", "((y + 0.5) / height - 0.5) * pi"),
+             ("gap", "max(clamp((b - r) / max(b, 1e-4) * 3) * clamp((sin(lat) - 0.05) / 0.15), "
+                     "clamp((0.2126 * r + 0.7152 * g + 0.0722 * b) / 50 - 1))"),
+             ("m", "clamp((gap - parent.cloud_cover) / max(parent.cloud_softness, 0.01) + 0.5)")]
+    for i, (name, expr) in enumerate(temps):
+        gaps["temp_name%d" % i].setValue(name)
+        gaps["temp_expr%d" % i].setValue(expr)
+    ring = ("(acos(clamp((sin(lon) * cos(lat) * {s}.x + sin(lat) * {s}.y - cos(lon) * cos(lat) * {s}.z) / "
+            "max(sqrt({s}.x * {s}.x + {s}.y * {s}.y + {s}.z * {s}.z), 1e-6), -1, 1)) * 180 / pi)").format(s=sun)
+    on_ring = "(%s > 2.5 && %s < 3.5)" % (ring, ring)
+    for i, (c, tint) in enumerate((("r", 1.0), ("g", 0.6), ("b", 0.15))):
+        lit = "%s / (1 + %s)" % (c, c)
+        gaps["expr%d" % i].setValue("%s ? %s : (%s) * 0.3 + m * m * (3 - 2 * m) * %.2f * 0.8"
+                                    % (on_ring, "1" if c != "b" else "0", lit, tint))
+    gaps_full = nuke.nodes.Reformat(name="CloudGapsFrame", type="to box", box_fixed=True, resize="distort",
+                                    xpos=1050, ypos=-110)
+    gaps_full["box_width"].setExpression("plate.width")
+    gaps_full["box_height"].setExpression("plate.height")
+    gaps_full.setInput(0, gaps)
+
+    sources = {"gaps": gaps_full, "hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
                "sun": passes["sun"], "sky": passes["sky"], "shadow": shadow, "fog": fog, "wisps": wisps,
                "surface": surface, "visibility": visibility, "P": passes["P"], "N": passes["N"]}
     view = nuke.nodes.Switch(name="ViewOutput", xpos=0, ypos=200)
