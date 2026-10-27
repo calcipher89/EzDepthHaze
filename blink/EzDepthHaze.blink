@@ -93,6 +93,7 @@ param:
   float cloudSize;
   float cloudSoftness;
   int cloudFromMap;
+  int cloudKeyAlpha;
   float cloudBreakup;
   float cloudBreakupSize;
   float noiseTime;
@@ -167,6 +168,7 @@ local:
     defineParam(cloudSize, "cloud_size", 1500.0f);
     defineParam(cloudSoftness, "cloud_softness", 0.15f);
     defineParam(cloudFromMap, "cloud_from_map", 0);
+    defineParam(cloudKeyAlpha, "cloud_key_alpha", 0);
     defineParam(cloudBreakup, "cloud_breakup", 0.0f);
     defineParam(cloudBreakupSize, "cloud_breakup_size", 300.0f);
     defineParam(noiseTime, "noise_time", 0.0f);
@@ -349,7 +351,11 @@ local:
       // Near the horizon the sky is pale haze, not gaps: count it as cloud.
       blue *= clamp((dq.y - 0.05f) / 0.15f, 0.0f, 1.0f);
       float disc = clamp(luma(float3(sc.x, sc.y, sc.z)) / 50.0f - 1.0f, 0.0f, 1.0f);
-      float m = clamp((max(blue, disc) + rough * 0.3f - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
+      float key = max(blue, disc);
+      // Or a keyed alpha: 1 is cloud, 0 is a gap.
+      if (cloudKeyAlpha != 0)
+        key = 1.0f - clamp(sc.w, 0.0f, 1.0f);
+      float m = clamp((key + rough * 0.3f - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
       return m * m * (3.0f - 2.0f * m);
     }
     float3 c = float3((q.x - noiseWind.x * noiseTime) / cloudSize, 7.3f, (q.z - noiseWind.z * noiseTime) / cloudSize);
