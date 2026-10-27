@@ -4,9 +4,10 @@ Run from a terminal (NukeX licence, -i so BlinkScript can compile):
 
     Nuke15.1.exe --nukex -i -t python/build_gizmo.py
 
-The group has three inputs: the plate (with depth in a channel), an optional Camera,
-and an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
-atmos_haze_color layer lights the haze and whose haze settings can be inherited.
+The group has four inputs: the plate (with depth in a channel), an optional Camera,
+an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
+atmos_haze_color layer lights the haze and whose haze settings can be inherited, and an
+optional lat-long `clouds` input (normally the HDRI) whose cloud gaps can let the sun through.
 """
 
 import base64
@@ -518,6 +519,13 @@ def _add_knobs(group, depth_pick, env_pick):
                  "makes longer beams.", 3000.0))
     add(*_double("cloud_size", "gap size (m)", 50, 20000, "Size of the gaps and the cloud between them.", 1500.0))
     add(*_double("cloud_softness", "gap softness", 0.01, 1, "How soft the edges of the gaps are.", 0.15))
+    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Clouds Input"])
+    cloud_from.setTooltip("Noise: made-up gaps of gap size. Clouds Input: the gaps in the sky plugged into the "
+                          "clouds input (normally the HDRI) work as a gobo: blue sky lets the sun through, cloud "
+                          "doesn't, so the beams line up with the gaps you see. Cloud cover is then how blue a gap "
+                          "must be; cloud height is how high those clouds are. Falls back to Noise with nothing "
+                          "plugged in.")
+    add(cloud_from)
 
     add(nuke.Text_Knob("surface_divider", "Surface Light"))
     surface_add = nuke.Boolean_Knob("surface_add", "add surface light")
@@ -620,6 +628,7 @@ def _link_haze(node, output):
     _link(node, "occluder_thickness", "parent.occluder_thickness")
     for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness"):
         _link(node, name, "parent." + name)
+    _link(node, "cloud_from_map", "[exists parent.input3] && parent.cloud_from==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
     _link(node, "surface_strength", "parent.surface_strength")
@@ -639,6 +648,14 @@ def build():
     plate = nuke.nodes.Input(name="plate", xpos=0, ypos=-300)
     nuke.nodes.Input(name="camera", xpos=300, ypos=-300)
     atmos = nuke.nodes.Input(name="atmos", xpos=600, ypos=-300)
+    clouds_in = nuke.nodes.Input(name="clouds", xpos=1050, ypos=-300)
+    # A tiny black stand-in keeps the kernel's cloud input fed when nothing is plugged in.
+    no_clouds = nuke.nodes.Constant(name="NoClouds", xpos=1150, ypos=-300)
+    no_clouds["format"].setValue(nuke.addFormat("8 4 1 EzDepthHaze_tiny"))
+    clouds = nuke.nodes.Switch(name="CloudsOrNone", xpos=1050, ypos=-200)
+    clouds.setInput(0, no_clouds)
+    clouds.setInput(1, clouds_in)
+    clouds["which"].setExpression("[exists parent.input3]")
 
     # The depth goes to red of its own stream; the haze colour lat-long to rgb of another.
     depth_pick = nuke.nodes.Copy(name="DepthPick", from0="depth.Z", to0="rgba.red", xpos=150, ypos=-200)
@@ -749,6 +766,7 @@ def build():
         node.setInput(2, sun_tinted)
         node.setInput(3, sky_tinted)
         node.setInput(4, sky_light)
+        node.setInput(5, clouds)
         _load_kernel(node, "EzDepthHaze.blink")
         _link_haze(node, output)
         if key in ("transmittance", "sun", "sky", "sun_free", "masks"):

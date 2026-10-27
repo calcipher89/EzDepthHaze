@@ -103,6 +103,8 @@ def build():
     haze.setInput(0, solid)
     haze.setInput(1, cam)
     haze.setInput(2, atmos)
+    # The HDRI's own clouds cast the beams (gaps from: Clouds Input).
+    haze.setInput(3, hdri)
 
     tools = {}
     exec(base64.b64decode(haze["tool_code"].value()).decode(), tools)
@@ -123,6 +125,7 @@ def build():
                             ("fog_density", 0.0)):
             haze[name].setValue(value)
         tools["rebase"](haze)
+    haze["cloud_from"].setValue(1)
 
     viewer = nuke.nodes.Viewer(xpos=300, ypos=460)
     viewer.setInput(0, haze)

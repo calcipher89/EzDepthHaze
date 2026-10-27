@@ -44,6 +44,7 @@ kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
   Image<eRead, eAccessRandom, eEdgeClamped> envSun;
   Image<eRead, eAccessRandom, eEdgeClamped> envSky;
   Image<eRead, eAccessRandom, eEdgeClamped> horizonLight;
+  Image<eRead, eAccessRandom, eEdgeClamped> cloudMap;
   Image<eWrite> dst;
 
 param:
@@ -91,6 +92,7 @@ param:
   float cloudHeight;
   float cloudSize;
   float cloudSoftness;
+  int cloudFromMap;
   float noiseTime;
   float noiseSeed;
   float3 sunDirection;
@@ -162,6 +164,7 @@ local:
     defineParam(cloudHeight, "cloud_height", 3000.0f);
     defineParam(cloudSize, "cloud_size", 1500.0f);
     defineParam(cloudSoftness, "cloud_softness", 0.15f);
+    defineParam(cloudFromMap, "cloud_from_map", 0);
     defineParam(noiseTime, "noise_time", 0.0f);
     defineParam(noiseSeed, "noise_seed", 1.0f);
     defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
@@ -301,6 +304,8 @@ local:
   // point gets sunlight when the ray from it towards the sun crosses the layer in a gap, so
   // gaps cast beams down through the haze. cloud_cover 0 is no cloud, 1 all cloud; the gaps
   // are fBm noise of cloud_size, edges cloud_softness wide, drifting with the wind.
+  // With cloud_from_map the gaps come from the clouds in a lat-long sky instead (a gobo): the
+  // layer is where the camera sees those clouds, so the beams line up with the sky's gaps.
   float cloudGap(float3 p, float3 sun)
   {
     if (cloudCover <= 0.0f || p.y >= cloudHeight)
@@ -308,6 +313,21 @@ local:
     if (sun.y <= 0.01f)
       return 1.0f - cloudCover;
     float3 q = p + sun * ((cloudHeight - p.y) / sun.y);
+    float soft = max(cloudSoftness, 0.01f);
+    if (cloudFromMap != 0) {
+      // Look the sky up the way the camera sees this spot of the layer. Blue sky is a gap,
+      // grey or white cloud is not; the sun itself (far brighter than any cloud) is a gap.
+      float3 dq = normalize(q - cameraOrigin());
+      float2 uv = latlongUV(dq);
+      float4 sc = bilinear(cloudMap, cloudMap.bounds.x1 + uv.x * cloudMap.bounds.width() - 0.5f,
+                           cloudMap.bounds.y1 + uv.y * cloudMap.bounds.height() - 0.5f);
+      float blue = clamp((sc.z - sc.x) / max(sc.z, 1e-4f) * 3.0f, 0.0f, 1.0f);
+      // Near the horizon the sky is pale haze, not gaps: count it as cloud.
+      blue *= clamp((dq.y - 0.05f) / 0.15f, 0.0f, 1.0f);
+      float disc = clamp(luma(float3(sc.x, sc.y, sc.z)) / 50.0f - 1.0f, 0.0f, 1.0f);
+      float m = clamp((max(blue, disc) - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
+      return m * m * (3.0f - 2.0f * m);
+    }
     float3 c = float3((q.x - noiseWind.x * noiseTime) / cloudSize, 7.3f, (q.z - noiseWind.z * noiseTime) / cloudSize);
     float sum = 0.0f, amp = 0.5f, norm = 0.0f;
     for (int i = 0; i < 4; i++) {
@@ -320,7 +340,6 @@ local:
     // fBm sits around 0.5 with a narrow spread: stretch it so cover maps evenly to how much
     // of the sky is cloud.
     n = clamp(0.5f + (n - 0.5f) * 3.0f, 0.0f, 1.0f);
-    float soft = max(cloudSoftness, 0.01f);
     float e = clamp((n - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
     return e * e * (3.0f - 2.0f * e);
   }
