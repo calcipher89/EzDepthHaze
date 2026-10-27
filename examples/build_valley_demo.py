@@ -66,7 +66,10 @@ def build():
     ref = nuke.nodes.Constant(name="Frame", format="HD_1080", xpos=300, ypos=-200)
     terrain = nuke.nodes.BlinkScript(name="ValleyTerrain", xpos=300, ypos=-100)
     terrain.setInput(0, ref)
-    terrain.setInput(1, hdri)
+    # Under cloud the sky light is grey: the terrain takes a desaturated copy of the HDRI.
+    overcast = nuke.nodes.Saturation(name="OvercastSky", saturation=0.25, xpos=150, ypos=-150)
+    overcast.setInput(0, hdri)
+    terrain.setInput(1, overcast)
     terrain["kernelSourceFile"].setValue(os.path.join(ROOT, "examples", "ValleyTerrain.blink").replace("\\", "/"))
     terrain["reloadKernelSourceFile"].execute()
     terrain["recompile"].execute()
@@ -81,7 +84,7 @@ def build():
         terrain[k + knob].setExpression("ValleyCamera." + knob)
     # Overcast: the terrain is lit by the sky; the sun through the gaps comes from EzDepthHaze.
     for knob, value in (("terrain_height", 6000.0), ("floor_width", 900.0), ("wall_width", 800.0),
-                        ("rim_height", 1300.0), ("sun_intensity", 0.0), ("ambient_strength", 0.8),
+                        ("rim_height", 1300.0), ("sun_intensity", 0.0), ("ambient_strength", 0.9),
                         ("sun_disc_radiance", 0.0)):
         terrain[k + knob].setValue(value)
 

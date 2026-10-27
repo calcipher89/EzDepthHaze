@@ -55,11 +55,11 @@ PRESETS = [
     ("Overcast Shafts", {
         "suggested_sun": "high, 30-50 degrees, in front of the camera; white",
         "sun": {"elevation": 40.0, "azimuth": -15.0, "color": [1.0, 0.93, 0.82]},
-        "knobs": {"haze_mode": 1, "haze_amount": 0.45, "match_horizon": True, "haze_tint": [1.0, 0.9, 0.78], "fog_density": 0.0,
+        "knobs": {"haze_mode": 1, "haze_amount": 0.59, "match_horizon": True, "haze_tint": [1.0, 0.85, 0.66], "fog_density": 0.0,
                   "noise_amount": 0.3, "noise_size": 1500.0, "noise_stretch": 3.0,
-                  "sun_scatter": 4.0, "sky_scatter": 0.6, "shadow_strength": 1.0, "shadow_fill": [0.0, 0.0, 0.0],
-                  "cloud_cover": 0.86, "cloud_size": 3400.0, "cloud_softness": 0.12,
-                  "surface_add": True, "surface_strength": 3.0},
+                  "sun_scatter": 7.0, "sky_scatter": 0.5, "shadow_strength": 1.0, "shadow_fill": [0.0, 0.0, 0.0],
+                  "cloud_cover": 0.9, "cloud_size": 6300.0, "cloud_softness": 0.18,
+                  "surface_add": True, "surface_strength": 4.0},
         "fog_below_camera": None,
         # The cloud layer's altitude above the camera, scaled with the shot like the fog.
         "cloud_above_camera": 3600.0,

@@ -718,6 +718,8 @@ def build():
     tinted = []
     for name, src, x in (("HazeSunTint", env_sun, 450), ("HazeSkyTint", env_sky, 500)):
         m = nuke.nodes.Multiply(name=name, channels="rgb", xpos=x, ypos=-80)
+        # Split the value per channel first, or every channel takes the red expression.
+        m["value"].setSingleValue(False)
         for i, c in enumerate("rgb"):
             m["value"].setExpression("parent.haze_tint.%s" % c, i)
         m.setInput(0, src)
