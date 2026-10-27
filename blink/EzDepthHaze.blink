@@ -596,6 +596,10 @@ local:
       // stay smooth instead of aliasing into a comb.
       float fogCeiling = fogTop + 0.5f * max(fogSoftness, 1.0f);
       float fogStep = max(0.5f * fogSoftness, 10.0f);
+      // Breakup is finer than the fog: step at half its size too, or it shows as steps.
+      if (cloudCover > 0.0f && cloudBreakup > 0.0f)
+        fogStep = max(min(fogStep, 0.5f * cloudBreakupSize), 5.0f);
+      float subJitter = jitterAt(pos, 41.0f);
       for (int i = 0; i <= steps; i++) {
         float tEnd = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
         if (tEnd <= tPrev)
@@ -603,11 +607,12 @@ local:
         int sub = 1;
         if (volumetric != 0 && fogDensity > 0.0f &&
             min(origin.y + dir.y * tPrev, origin.y + dir.y * tEnd) < fogCeiling)
-          sub = (int)clamp(ceil((tEnd - tPrev) / fogStep), 1.0f, 8.0f);
+          sub = (int)clamp(ceil((tEnd - tPrev) / fogStep), 1.0f, 16.0f);
         float tStart = tPrev;
         for (int q = 0; q < sub; q++) {
         float t = tStart + (tEnd - tStart) * (q + 1) / sub;
-        float tMid = 0.5f * (tPrev + t);
+        // Sample a jittered point of each sub-step (grain the smoothing removes), not its middle.
+        float tMid = sub > 1 ? tPrev + (t - tPrev) * subJitter : 0.5f * (tPrev + t);
         float3 p = origin + dir * tMid;
         float3 sigma;
         float fogPart = 0.0f;
