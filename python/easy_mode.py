@@ -29,7 +29,7 @@ SLIDERS = [("easy_haze", 1.0, (0.6, 1.6)), ("easy_warmth", 0.0, (-0.6, 0.6)), ("
            ("easy_fog_softness", 1.0, (0.4, 1.6)), ("easy_texture", 1.0, (0.3, 2.0)),
            ("easy_texture_scale", 1.0, (0.4, 1.6)), ("easy_texture_detail", 1.0, (0.5, 1.8)),
            ("easy_texture_sharpness", 0.0, (0.0, 1.5))]
-EASY_KNOBS = [name for name, _, _ in SLIDERS] + ["look_strength"]
+EASY_KNOBS = [name for name, _, _ in SLIDERS] + ["look_strength", "easy_exposure"]
 
 
 class _Busy(object):
@@ -83,6 +83,9 @@ def rebase(n, relief=None, centre=True):
     """Make the advanced knobs' current values the base, and centre the sliders."""
     with _Busy():
         base = dict((k, _value(n, k)) for k in LOOK_KNOBS if n.knob(k))
+        # Exposure stays as it is across looks: the base holds the haze brightness without it.
+        if "haze_color_gain" in base and n.knob("easy_exposure"):
+            base["haze_color_gain"] = base["haze_color_gain"] / 2.0 ** n["easy_exposure"].value()
         old = {}
         try:
             old = json.loads(n["easy_base"].value() or "{}")
@@ -148,6 +151,10 @@ def apply_easy(n):
 def _apply_sliders(n, b):
     s = n["look_strength"].value()
     e = dict((name, n[name].value()) for name, _, _ in SLIDERS)
+
+    # Exposure: the haze light's brightness in stops, on top of the look's.
+    if n.knob("easy_exposure"):
+        n["haze_color_gain"].setValue(b.get("haze_color_gain", 1.0) * 2.0 ** n["easy_exposure"].value())
 
     # Haze: thickness.
     n["haze_amount"].setValue(b["haze_amount"] * e["easy_haze"] * s)
@@ -327,6 +334,57 @@ def surprise(n):
     return best[1]
 
 
+def match_plate(n, grid=(24, 14)):
+    """Set 'exposure' so the haze over the farthest terrain in this frame is as bright as the
+    plate's sky just above it (the sky the terrain should fade into), or, with no sky in frame,
+    as the plate's highlights (its 90th percentile). Returns what it did."""
+    plate = n.input(0)
+    if plate is None:
+        raise ValueError("connect a plate with depth first")
+    channel = n["depth_channel"].value()
+    threshold = n["sky_threshold"].value()
+    inverse = n["depth_type"].getValue() == 2
+    fmt = plate.format()
+    terrain, sky_low = [], []
+    for i in range(grid[0]):
+        x = fmt.width() * (i + 0.5) / grid[0]
+        column_sky = []
+        for j in range(grid[1]):
+            y = fmt.height() * (j + 0.5) / grid[1]
+            dv = plate.sample(channel, x, y)
+            lum = 0.2126 * plate.sample("red", x, y) + 0.7152 * plate.sample("green", x, y) + \
+                0.0722 * plate.sample("blue", x, y)
+            if dv <= 0 or dv >= threshold:
+                column_sky.append((y, lum))
+            else:
+                dist = 1.0 / dv if inverse else dv
+                haze = 0.2126 * n.sample("haze_inscatter.red", x, y) + \
+                    0.7152 * n.sample("haze_inscatter.green", x, y) + 0.0722 * n.sample("haze_inscatter.blue", x, y)
+                terrain.append((dist, lum, haze))
+        if column_sky:
+            # The lowest sky in the column: what the farthest terrain meets.
+            sky_low.append(min(column_sky)[1])
+    if len(terrain) < 6:
+        raise ValueError("not enough terrain in frame to match")
+    terrain.sort()
+    far = terrain[int(len(terrain) * 0.8):]
+    have = sorted(t[2] for t in far)[len(far) // 2]
+    if len(sky_low) >= 3:
+        target = sorted(sky_low)[len(sky_low) // 2]
+        what = "the plate's sky just above the terrain"
+    else:
+        lums = sorted(t[1] for t in terrain)
+        target = lums[int(len(lums) * 0.9)]
+        what = "the plate's highlights (no sky in frame)"
+    if have <= 1e-6 or target <= 1e-6:
+        raise ValueError("the haze or the plate is black here: nothing to match")
+    current = n["easy_exposure"].value()
+    stops = min(max(current + math.log(target / have, 2.0), -4.0), 4.0)
+    n["easy_exposure"].setValue(round(stops, 2))
+    apply_easy(n)
+    return "Exposure %+.2f stops: the haze over the farthest terrain now matches %s." % (stops, what)
+
+
 def reset_sliders(n):
     """Centre the sliders: back to the base look."""
     b = _base(n)
@@ -347,6 +405,8 @@ def reset_look(n):
         for name, _, _ in SLIDERS:
             n[name].setValue(_neutral(name, {"surface_add": n["surface_add"].value()}))
         n["look_strength"].setValue(1.0)
+        if n.knob("easy_exposure"):
+            n["easy_exposure"].setValue(0.0)
         n["easy_base"].setValue("")
     show_visibility(n)
     easy_message("Look reset to the node's defaults. Pick a look, or press apply, to start again.")

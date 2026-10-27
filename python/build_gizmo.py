@@ -145,7 +145,7 @@ def _tool_code(defaults):
                         {"fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
-                         "surface_add", "surface_strength", "silhouette"})
+                         "surface_add", "surface_strength", "silhouette", "haze_color_gain"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -251,6 +251,16 @@ def _add_easy_knobs(add):
     strength.setRange(0, 1)
     strength.setTooltip("From clear air (0) to the full look (1).")
     add(strength, 1.0)
+    exposure = nuke.Double_Knob("easy_exposure", "exposure")
+    exposure.setRange(-4, 4)
+    exposure.setTooltip("How bright the haze light is, in stops (+1 doubles it), without changing how thick the "
+                        "haze is. Looks and surprise me leave it alone, so it stays matched to the plate.")
+    add(exposure, 0.0)
+    match = nuke.PyScript_Knob("match_plate", "match plate", _button("d['easy_message'](d['match_plate'](n))"))
+    match.setTooltip("Sets exposure from this frame: the haze over the farthest terrain as bright as the plate's "
+                     "sky just above it, or, with no sky in frame, as the plate's highlights.")
+    match.clearFlag(nuke.STARTLINE)
+    add(match)
 
     add(nuke.Text_Knob("vis_divider", "Visibility"))
     for name, label, lo, hi, tip in [
