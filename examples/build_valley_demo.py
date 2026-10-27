@@ -57,7 +57,7 @@ def build():
     atmos["sun_from"].setValue("Manual")
     atmos["sun_direction"].setValue(sun)
     atmos["light_from_hdri"].setValue(False)
-    atmos["sun_color"].setValue([1.0, 0.93, 0.82])
+    atmos["sun_color"].setValue([1.0, 0.86, 0.68])
     atmos["sun_strength"].setValue(1.0)
     atmos["passes"].setValue("Depth Haze")
     atmos["camera_height"].setValue(CAMERA[1])

@@ -54,13 +54,16 @@ PRESETS = [
     }),
     ("Overcast Shafts", {
         "suggested_sun": "high, 30-50 degrees, in front of the camera; white",
-        "sun": {"elevation": 40.0, "azimuth": -15.0, "color": [1.0, 0.93, 0.82]},
-        "knobs": {"haze_mode": 1, "haze_amount": 0.59, "match_horizon": True, "haze_tint": [1.0, 0.85, 0.66], "fog_density": 0.0,
+        "sun": {"elevation": 40.0, "azimuth": -15.0, "color": [1.0, 0.86, 0.68]},
+        # Dark haze in shadow and bright beams; a cool fill in the shadows, warm sun in the
+        # beams; a little fog low in the valley so the beams glow as they reach the floor.
+        "knobs": {"haze_mode": 1, "haze_amount": 0.45, "match_horizon": True, "haze_tint": [1.0, 0.85, 0.66],
+                  "fog_density": 0.5, "fog_softness": 400.0,
                   "noise_amount": 0.3, "noise_size": 1500.0, "noise_stretch": 3.0,
-                  "sun_scatter": 7.0, "sky_scatter": 0.5, "shadow_strength": 1.0, "shadow_fill": [0.0, 0.0, 0.0],
-                  "cloud_cover": 0.9, "cloud_size": 6300.0, "cloud_softness": 0.18,
-                  "surface_add": True, "surface_strength": 4.0},
-        "fog_below_camera": None,
+                  "sun_scatter": 9.0, "sky_scatter": 0.25, "shadow_strength": 1.0, "shadow_fill": [0.01, 0.015, 0.025],
+                  "cloud_cover": 0.97, "cloud_size": 6300.0, "cloud_softness": 0.1,
+                  "surface_add": True, "surface_strength": 6.0},
+        "fog_below_camera": 2300.0,
         # The cloud layer's altitude above the camera, scaled with the shot like the fog.
         "cloud_above_camera": 3600.0,
     }),
