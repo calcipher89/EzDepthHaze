@@ -148,7 +148,8 @@ def _tool_code(defaults):
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
                          "surface_add", "surface_strength", "silhouette", "haze_color_gain",
-                         "cloud_cover", "cloud_height", "cloud_size", "cloud_softness"})
+                         "cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
+                         "cloud_breakup_size"})
     with open(os.path.join(ROOT, "python", "fit_to_shot.py")) as f:
         code = f.read()
     code = code.replace("PRESETS = {}  # filled in by build_gizmo.py", "PRESETS = %r" % presets)
@@ -526,6 +527,10 @@ def _add_knobs(group, depth_pick, env_pick):
                           "must be; cloud height is how high those clouds are. Falls back to Noise with nothing "
                           "plugged in.")
     add(cloud_from)
+    add(*_double("cloud_breakup", "breakup", 0, 1, "Noise that roughens the edges of the gaps and thins them in "
+                 "streaks, so the beams break up instead of being clean cones of light. 0 is off.", 0.0))
+    add(*_double("cloud_breakup_size", "breakup size (m)", 10, 5000, "Size of the breakup noise on the cloud "
+                 "layer. Smaller is finer streaks in the beams.", 300.0))
 
     add(nuke.Text_Knob("surface_divider", "Surface Light"))
     surface_add = nuke.Boolean_Knob("surface_add", "add surface light")
@@ -626,7 +631,8 @@ def _link_haze(node, output):
     _link(node, "shadow_distance", "parent.shadow_distance * 1000")
     _link(node, "penumbra", "parent.penumbra")
     _link(node, "occluder_thickness", "parent.occluder_thickness")
-    for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness"):
+    for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
+                 "cloud_breakup_size"):
         _link(node, name, "parent." + name)
     _link(node, "cloud_from_map", "[exists parent.input3] && parent.cloud_from==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")

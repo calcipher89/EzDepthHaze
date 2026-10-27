@@ -62,6 +62,7 @@ PRESETS = [
                   "noise_amount": 0.3, "noise_size": 1500.0, "noise_stretch": 3.0,
                   "sun_scatter": 9.0, "sky_scatter": 0.25, "shadow_strength": 1.0, "shadow_fill": [0.01, 0.015, 0.025],
                   "cloud_cover": 0.97, "cloud_size": 6300.0, "cloud_softness": 0.1,
+                  "cloud_breakup": 0.4, "cloud_breakup_size": 250.0,
                   "surface_add": True, "surface_strength": 6.0},
         "fog_below_camera": 2300.0,
         # The cloud layer's altitude above the camera, scaled with the shot like the fog.
