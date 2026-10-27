@@ -322,9 +322,11 @@ local:
     // It sits on the cloud layer, so it carries down each beam as streaks along the sun.
     float rough = 0.0f;
     if (cloudBreakup > 0.0f) {
-      float3 b = float3(q.x / cloudBreakupSize, 3.1f, q.z / cloudBreakupSize);
-      float wx = vnoise3(b) - 0.5f;
-      float wz = vnoise3(b + float3(17.3f, 0.0f, 9.1f)) - 0.5f;
+      // Rotated off the noise lattice, and warped by two octaves, so it shows no rows.
+      float3 b = float3((0.8f * q.x - 0.6f * q.z) / cloudBreakupSize, 3.1f, (0.6f * q.x + 0.8f * q.z) / cloudBreakupSize);
+      float wx = 0.67f * vnoise3(b) + 0.33f * vnoise3(b * 2.3f + float3(5.2f, 0.0f, 1.3f)) - 0.5f;
+      float wz = 0.67f * vnoise3(b + float3(17.3f, 0.0f, 9.1f)) + 0.33f * vnoise3(b * 2.3f + float3(2.9f, 0.0f, 8.4f)) - 0.5f;
+      b = b + float3(wx, 0.0f, wz) * 1.2f;
       q = q + float3(wx, 0.0f, wz) * (cloudBreakup * cloudBreakupSize * 1.5f);
       float sum = 0.0f, amp = 0.5f, norm = 0.0f;
       float3 c2 = b * 2.0f;
@@ -583,10 +585,22 @@ local:
       float3 sun = jitteredSun(jitterAt(pos, 29.0f), jitterAt(pos, 31.0f));
       float vis = 1.0f;
       float tPrev = s;
+      // Fog sits in a thin layer, and far steps are long: split a step that reaches into the
+      // fog into sub-steps about half the fog's softness long (up to 8), so beams crossing it
+      // stay smooth instead of aliasing into a comb.
+      float fogCeiling = fogTop + 0.5f * max(fogSoftness, 1.0f);
+      float fogStep = max(0.5f * fogSoftness, 10.0f);
       for (int i = 0; i <= steps; i++) {
-        float t = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
-        if (t <= tPrev)
+        float tEnd = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
+        if (tEnd <= tPrev)
           continue;
+        int sub = 1;
+        if (volumetric != 0 && fogDensity > 0.0f &&
+            min(origin.y + dir.y * tPrev, origin.y + dir.y * tEnd) < fogCeiling)
+          sub = (int)clamp(ceil((tEnd - tPrev) / fogStep), 1.0f, 8.0f);
+        float tStart = tPrev;
+        for (int q = 0; q < sub; q++) {
+        float t = tStart + (tEnd - tStart) * (q + 1) / sub;
         float tMid = 0.5f * (tPrev + t);
         float3 p = origin + dir * tMid;
         float3 sigma;
@@ -607,7 +621,7 @@ local:
         float w = useFar != 0 ? 1.0f - exp(-tMid / matchDistance) : 0.0f;
         float3 sunL = sunNear + (sunFar - sunNear) * w;
         float3 skyL = skyNear + (skyFar - skyNear) * w;
-        if (shadows && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
+        if (shadows && q == 0 && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
           vis = sunVisibility(p, origin, sun, shadowSamples, sj);
         float lit = (vis + (1.0f - vis) * (1.0f - shadowStrength)) * cloudGap(p, sun);
         sunFree += scatter * sunL;
@@ -619,6 +633,7 @@ local:
         wispWeight += weight * (n - 1.0f);
         transmittance *= stepT;
         tPrev = t;
+        }
       }
       // Some of the lost sunlight can be put back, tinted, for an artistic fill.
       sunIn += shadowFill * (sunFree - sunIn);
