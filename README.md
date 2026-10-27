@@ -113,7 +113,10 @@ The node opens on its **Easy** tab:
   high, no slider can bring them out.
 - **surprise me** picks random adjustments within tasteful limits, and **surprise strength**
   sets how far they go (0.5 nudges, 1 usual, 2 wild); **centre sliders** puts them back to
-  the look as applied.
+  the look as applied. The picks are weighed by the shot: *glow* and *shafts* only reach far
+  when the sun is low and in front of the camera, and each pick is checked on the image. One
+  that makes the terrain more than about a third brighter or darker than the look, or washes
+  out its contrast, is re-rolled (up to 6 tries, keeping the best).
 - **My Looks**: type a *name*, pick *save to* User or Studio and press *save look*; pick one
   in *saved looks* and press **apply look** to use it, or **delete look** to remove it.
   Saving over a look or deleting one keeps a dated copy in the folder's `.backup` subfolder.

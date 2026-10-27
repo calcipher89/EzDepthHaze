@@ -10,6 +10,7 @@ fitted to the shot, a loaded look, or the advanced knobs after an artist edits o
 so the Advanced tab always shows exactly what Easy did, ready to fine-tune.
 """
 import json
+import math
 import os
 import random
 import re
@@ -228,18 +229,102 @@ def apply_look(n):
     return summary
 
 
+def _backlight(n):
+    """How much the sun can give glow and shafts in this shot, 0 to 1: 1 with the sun low
+    (under 12 deg) and in front of the camera, falling to 0 beside, behind or high. 0.5 when it
+    can't be told (no atmos, camera or sun)."""
+    atmos, cam = _atmos(n), _camera(n)
+    if atmos is None or cam is None or not cam.knob("world_matrix"):
+        return 0.5
+    knob = atmos.knob("sun_in_use") or atmos.knob("sun_direction")
+    if knob is None:
+        return 0.5
+    sun = list(knob.value())
+    ln = math.sqrt(sum(x * x for x in sun)) or 1.0
+    sun = [x / ln for x in sun]
+    wm = cam["world_matrix"]
+    yaw = math.atan2(-wm.getValue(2), wm.getValue(10))
+    az = math.degrees(math.atan2(sun[0], -sun[2]) - yaw)
+    az = abs((az + 180.0) % 360.0 - 180.0)
+    elev = math.degrees(math.asin(max(-1.0, min(1.0, sun[1]))))
+    front = max(0.0, min(1.0, (90.0 - az) / 60.0))
+    low = max(0.0, min(1.0, (25.0 - elev) / 13.0)) if elev > -3.0 else 0.3
+    return front * low
+
+
+def _frame_stats(n, grid=(10, 6)):
+    """Mean and spread of the luminance of the terrain in frame (pixels with depth, short of
+    the sky), from a coarse grid of samples of the node's output."""
+    plate = n.input(0)
+    if plate is None:
+        return None
+    channel = n["depth_channel"].value()
+    threshold = n["sky_threshold"].value()
+    lums = []
+    for j in range(grid[1]):
+        for i in range(grid[0]):
+            x = plate.format().width() * (i + 0.5) / grid[0]
+            y = plate.format().height() * (j + 0.5) / grid[1]
+            dv = plate.sample(channel, x, y)
+            if dv <= 0 or dv >= threshold:
+                continue
+            lums.append(0.2126 * n.sample("red", x, y) + 0.7152 * n.sample("green", x, y) +
+                        0.0722 * n.sample("blue", x, y))
+    if len(lums) < 4:
+        return None
+    mean = sum(lums) / len(lums)
+    spread = math.sqrt(sum((v - mean) ** 2 for v in lums) / len(lums))
+    return mean, spread
+
+
 def surprise(n):
-    """Random slider values within tasteful limits, scaled by 'surprise strength'."""
+    """Random slider values within tasteful limits, scaled by 'surprise strength', weighed by
+    the shot: glow and shafts only reach far when the sun is low and in front, and each pick
+    is checked on the image. A pick that makes the terrain more than about a third brighter or
+    darker than the look, or washes out its contrast, is tried again (up to 6 times, then the
+    best one is kept)."""
     b = _base(n)
     k = n["surprise_strength"].value()
+    middles = dict((s, m) for s, m, _ in SLIDERS)
+    sunny = _backlight(n)
+    # Sun-driven sliders: their reach shrinks when the sun can't show them.
+    reach = {"easy_glow": 0.3 + 0.7 * sunny, "easy_shafts": 0.3 + 0.7 * sunny}
     with _Busy():
-        for name, _, (lo, hi) in SLIDERS:
-            mid = _neutral(name, b)
-            v = mid + (random.uniform(lo, hi) - dict((s, m) for s, m, _ in SLIDERS)[name]) * k
-            knob = n[name]
-            v = min(max(v, knob.min()), knob.max()) if hasattr(knob, "min") else v
-            knob.setValue(round(v, 2))
+        for name, _, _ in SLIDERS:
+            n[name].setValue(_neutral(name, b))
     apply_easy(n)
+    base_stats = _frame_stats(n) if nuke.GUI else None
+    best = None
+    for attempt in range(6 if base_stats else 1):
+        # Later tries stay closer to the look.
+        k_try = k * (1.0 - 0.12 * attempt)
+        picks = {}
+        with _Busy():
+            for name, _, (lo, hi) in SLIDERS:
+                mid = _neutral(name, b)
+                v = mid + (random.uniform(lo, hi) - middles[name]) * k_try * reach.get(name, 1.0)
+                knob = n[name]
+                v = min(max(v, knob.min()), knob.max()) if hasattr(knob, "min") else v
+                picks[name] = round(v, 2)
+                knob.setValue(picks[name])
+        apply_easy(n)
+        if base_stats is None:
+            return picks
+        stats = _frame_stats(n)
+        if stats is None:
+            return picks
+        brightness = abs(math.log(max(stats[0], 1e-6) / max(base_stats[0], 1e-6)))
+        contrast = stats[1] / max(base_stats[1], 1e-6)
+        score = brightness + max(0.0, 0.7 - contrast)
+        if best is None or score < best[0]:
+            best = (score, picks)
+        if brightness < 0.3 and contrast > 0.7:
+            return picks
+    with _Busy():
+        for name, v in best[1].items():
+            n[name].setValue(v)
+    apply_easy(n)
+    return best[1]
 
 
 def reset_sliders(n):
