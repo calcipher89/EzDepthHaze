@@ -169,6 +169,75 @@ def _atmos(n):
     return a
 
 
+def _clouds(n):
+    """The lat-long in the clouds input, through any Dots or NoOps."""
+    c = n.input(3)
+    while c is not None and c.Class() in ("Dot", "NoOp"):
+        c = c.input(0) if c.inputs() else None
+    return c
+
+
+def cloud_setup(n, st=None):
+    """With a sky in the clouds input: use it for the gaps, put the cloud layer where the sky
+    round the sun is used, and set cloud cover so about a quarter of that sky lets the sun
+    through. Returns a line saying what was set, or None without a clouds input."""
+    sky = _clouds(n)
+    if sky is None or not sky.width():
+        return None
+    atmos = _atmos(n)
+    src = atmos if atmos is not None else n
+    sun = [src["sun_direction"].value(i) for i in range(3)]
+    length = math.sqrt(sum(x * x for x in sun)) or 1.0
+    sun = [x / length for x in sun]
+    if sun[1] < 0.05:
+        return "Clouds input: the sun is at the horizon, so cloud gaps can't cast beams."
+    if atmos is not None and atmos.knob("hdri_rotation"):
+        rot = math.radians(atmos["hdri_rotation"].value())
+    else:
+        rot = math.radians(n["env_rotation"].value())
+    # The sky the beams come through: rings 5 to 25 degrees round the sun.
+    up = [0.0, 1.0, 0.0] if abs(sun[1]) < 0.99 else [1.0, 0.0, 0.0]
+    a = [sun[1] * up[2] - sun[2] * up[1], sun[2] * up[0] - sun[0] * up[2], sun[0] * up[1] - sun[1] * up[0]]
+    la = math.sqrt(sum(x * x for x in a)) or 1.0
+    a = [x / la for x in a]
+    b = [sun[1] * a[2] - sun[2] * a[1], sun[2] * a[0] - sun[0] * a[2], sun[0] * a[1] - sun[1] * a[0]]
+    w, h = sky.format().width(), sky.format().height()
+    keys = []
+    for ring in range(1, 6):
+        ang = math.radians(5.0 * ring)
+        for k in range(12):
+            phi = 2.0 * math.pi * k / 12.0
+            d = [math.cos(ang) * sun[i] + math.sin(ang) * (math.cos(phi) * a[i] + math.sin(phi) * b[i])
+                 for i in range(3)]
+            lon = math.atan2(d[0], -d[2]) - rot
+            lat = math.asin(max(-1.0, min(1.0, d[1])))
+            u = lon / (2.0 * math.pi) + 0.5
+            x, y = (u - math.floor(u)) * w, (lat / math.pi + 0.5) * h
+            r, g, bl = [sky.sample(c, x, y) for c in ("red", "green", "blue")]
+            # The same key as the kernel: blue sky (away from the horizon) or the sun itself.
+            key = max(0.0, min(1.0, (bl - r) / max(bl, 1e-4) * 3.0)) * max(0.0, min(1.0, (d[1] - 0.05) / 0.15))
+            disc = max(0.0, min(1.0, (0.2126 * r + 0.7152 * g + 0.0722 * bl) / 50.0 - 1.0))
+            keys.append(max(key, disc))
+    keys.sort()
+    if keys[-max(len(keys) // 10, 1)] < 0.2:
+        n["cloud_from"].setValue("Noise")
+        return ("Clouds input: the sky round the sun has hardly any blue gaps, so the gaps stay on "
+                "Noise (check with view output > Cloud Gaps).")
+    n["cloud_from"].setValue("Clouds Input")
+    cover = max(0.3, min(0.97, keys[int(len(keys) * 0.75)]))
+    n["cloud_cover"].setValue(round(cover, 3))
+    if st is None:
+        try:
+            st = _stats(measure(n), n["sky_threshold"].value())
+        except ValueError:
+            st = None
+    if st is not None:
+        # Low enough that the beams in frame draw on the sky round the sun, not just the sun.
+        n["cloud_height"].setValue(round(st["camera"] + max(1000.0, 0.35 * st["dist"][1]), 1))
+    return ("Clouds input: gaps from the sky, cloud cover %.2f (about a quarter of the sky round "
+            "the sun lets light through), cloud height %.0f m." % (cover, n["cloud_height"].value()))
+
+
 def sun_suggestion(n, preset):
     """The preset's sun placed relative to this camera, when the current sun is far from it.
 
@@ -326,6 +395,7 @@ def fit(n, name=None):
         n["fog_top"].setValue(round(fog_top, 1))
     if preset.get("cloud_above_camera"):
         n["cloud_height"].setValue(round(st["camera"] + preset["cloud_above_camera"] * scale, 1))
+    clouds_line = cloud_setup(n, st) if knobs.get("cloud_cover") else None
     wind = n["noise_wind"].value()
     speed = math.sqrt(sum(x * x for x in wind)) or 1.0
     n["noise_wind"].setValue([x / speed * 5.0 * scale for x in wind] if any(wind) else [5.0 * scale, 0.0, 0.0])
@@ -340,6 +410,8 @@ def fit(n, name=None):
              "Haze amount %.3g, fog top %.0f m." % (n["haze_amount"].value(), n["fog_top"].value())]
     if backdrop is not None:
         lines.append("A far backdrop now counts as sky.")
+    if clouds_line:
+        lines.append(clouds_line)
     return "\n".join(lines)
 
 
