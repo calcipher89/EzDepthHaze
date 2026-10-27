@@ -202,6 +202,14 @@ def cloud_setup(n, st=None):
     a = [x / la for x in a]
     b = [sun[1] * a[2] - sun[2] * a[1], sun[2] * a[0] - sun[0] * a[2], sun[0] * a[1] - sun[1] * a[0]]
     w, h = sky.format().width(), sky.format().height()
+    # A keyed alpha in the clouds input (1 cloud, 0 gap) is used as it is.
+    # (A constant alpha, as many HDRI reads have, is no key.)
+    alpha = "rgba.alpha" in sky.channels()
+    if alpha:
+        probe = [sky.sample("alpha", (i + 0.5) / 16.0 * w, (0.55 + 0.4 * (j + 0.5) / 4.0) * h)
+                 for i in range(16) for j in range(4)]
+        alpha = max(probe) - min(probe) > 0.05
+    n["cloud_key"].setValue("Alpha" if alpha else "Blue Sky")
     keys = []
     for ring in range(1, 6):
         ang = math.radians(5.0 * ring)
@@ -213,6 +221,9 @@ def cloud_setup(n, st=None):
             lat = math.asin(max(-1.0, min(1.0, d[1])))
             u = lon / (2.0 * math.pi) + 0.5
             x, y = (u - math.floor(u)) * w, (lat / math.pi + 0.5) * h
+            if alpha:
+                keys.append(1.0 - max(0.0, min(1.0, sky.sample("alpha", x, y))))
+                continue
             r, g, bl = [sky.sample(c, x, y) for c in ("red", "green", "blue")]
             # The same key as the kernel: blue sky (away from the horizon) or the sun itself.
             key = max(0.0, min(1.0, (bl - r) / max(bl, 1e-4) * 3.0)) * max(0.0, min(1.0, (d[1] - 0.05) / 0.15))
@@ -221,8 +232,8 @@ def cloud_setup(n, st=None):
     keys.sort()
     if keys[-max(len(keys) // 10, 1)] < 0.2:
         n["cloud_from"].setValue("Noise")
-        return ("Clouds input: the sky round the sun has hardly any blue gaps, so the gaps stay on "
-                "Noise (check with view output > Cloud Gaps).")
+        return ("Clouds input: the sky round the sun has hardly any %s, so the gaps stay on "
+                "Noise (check with view output > Cloud Gaps)." % ("gaps in the alpha" if alpha else "blue gaps"))
     n["cloud_from"].setValue("Clouds Input")
     cover = max(0.3, min(0.97, keys[int(len(keys) * 0.75)]))
     n["cloud_cover"].setValue(round(cover, 3))
@@ -234,8 +245,9 @@ def cloud_setup(n, st=None):
     if st is not None:
         # Low enough that the beams in frame draw on the sky round the sun, not just the sun.
         n["cloud_height"].setValue(round(st["camera"] + max(1000.0, 0.35 * st["dist"][1]), 1))
-    return ("Clouds input: gaps from the sky, cloud cover %.2f (about a quarter of the sky round "
-            "the sun lets light through), cloud height %.0f m." % (cover, n["cloud_height"].value()))
+    return ("Clouds input: gaps from the %s, cloud cover %.2f (about a quarter of the sky round "
+            "the sun lets light through), cloud height %.0f m."
+            % ("keyed alpha" if alpha else "sky's blue", cover, n["cloud_height"].value()))
 
 
 def sun_suggestion(n, preset):

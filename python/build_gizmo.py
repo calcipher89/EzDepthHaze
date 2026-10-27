@@ -527,6 +527,12 @@ def _add_knobs(group, depth_pick, env_pick):
                           "must be; cloud height is how high those clouds are. Falls back to Noise with nothing "
                           "plugged in.")
     add(cloud_from)
+    cloud_key = nuke.Enumeration_Knob("cloud_key", "gap key", ["Blue Sky", "Alpha"])
+    cloud_key.setTooltip("What in the clouds input counts as a gap. Blue Sky: keyed from the colours (blue sky "
+                         "and the sun). Alpha: a matte you keyed yourself in the clouds input's alpha, 1 where "
+                         "there is cloud and 0 in the gaps. Cloud cover is then the alpha below which the sun "
+                         "gets through (0.5 is half way).")
+    add(cloud_key)
     add(*_double("cloud_breakup", "breakup", 0, 1, "Noise that roughens the edges of the gaps and thins them in "
                  "streaks, so the beams break up instead of being clean cones of light. 0 is off.", 0.0))
     add(*_double("cloud_breakup_size", "breakup size (m)", 10, 5000, "Size of the breakup noise on the cloud "
@@ -635,6 +641,7 @@ def _link_haze(node, output):
                  "cloud_breakup_size"):
         _link(node, name, "parent." + name)
     _link(node, "cloud_from_map", "[exists parent.input3] && parent.cloud_from==1")
+    _link(node, "cloud_key_alpha", "parent.cloud_key==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
     _link(node, "surface_strength", "parent.surface_strength")
@@ -846,7 +853,8 @@ def build():
              ("lat", "((y + 0.5) / height - 0.5) * pi"),
              ("gap", "max(clamp((b - r) / max(b, 1e-4) * 3) * clamp((sin(lat) - 0.05) / 0.15), "
                      "clamp((0.2126 * r + 0.7152 * g + 0.0722 * b) / 50 - 1))"),
-             ("m", "clamp((gap - parent.cloud_cover) / max(parent.cloud_softness, 0.01) + 0.5)")]
+             ("m", "clamp(((parent.cloud_key==1 ? 1 - clamp(a) : gap) - parent.cloud_cover) / "
+                   "max(parent.cloud_softness, 0.01) + 0.5)")]
     for i, (name, expr) in enumerate(temps):
         gaps["temp_name%d" % i].setValue(name)
         gaps["temp_expr%d" % i].setValue(expr)
