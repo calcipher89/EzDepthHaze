@@ -170,19 +170,44 @@ def _atmos(n):
 
 
 def _clouds(n):
-    """The lat-long in the clouds input, through any Dots or NoOps."""
-    c = n.input(3)
+    """Where the cloud gaps' sky comes from: (node, layer, menu value), or (None, None, None).
+    The clouds input (through any Dots or NoOps) when it's on the node and plugged in, else
+    the atmos node's atmos_clouds layer when it outputs a lat-long."""
+    c = n.input(3) if n.inputs() > 3 else None
     while c is not None and c.Class() in ("Dot", "NoOp"):
         c = c.input(0) if c.inputs() else None
-    return c
+    if c is not None and c.width():
+        return c, "rgba", "Clouds Input"
+    a = _atmos(n)
+    if (a is not None and "atmos_clouds.red" in a.channels() and
+            not (a.knob("output_mapping") and int(a["output_mapping"].getValue()) != 0)):
+        return a, "atmos_clouds", "Sky (from atmos)"
+    return None, None, None
+
+
+def sync_clouds_input(n):
+    """Show the clouds input only while 'gaps from' is Clouds Input (knobChanged does the same
+    when the menu is changed by hand)."""
+    want = n["cloud_from"].value() == "Clouds Input"
+    if not want and n.input(3) is not None:
+        n.setInput(3, None)
+    with n:
+        inp = nuke.toNode("clouds")
+        if want and inp is None:
+            inp = nuke.nodes.Input(name="clouds", xpos=1050, ypos=-300)
+            pick = nuke.toNode("CloudsOrNone")
+            if pick is not None:
+                pick.setInput(1, inp)
+        elif not want and inp is not None:
+            nuke.delete(inp)
 
 
 def cloud_setup(n, st=None):
     """With a sky in the clouds input: use it for the gaps, put the cloud layer where the sky
     round the sun is used, and set cloud cover so about a quarter of that sky lets the sun
     through. Returns a line saying what was set, or None without a clouds input."""
-    sky = _clouds(n)
-    if sky is None or not sky.width():
+    sky, layer, source = _clouds(n)
+    if sky is None:
         return None
     atmos = _atmos(n)
     src = atmos if atmos is not None else n
@@ -204,9 +229,9 @@ def cloud_setup(n, st=None):
     w, h = sky.format().width(), sky.format().height()
     # A keyed alpha in the clouds input (1 cloud, 0 gap) is used as it is.
     # (A constant alpha, as many HDRI reads have, is no key.)
-    alpha = "rgba.alpha" in sky.channels()
+    alpha = layer + ".alpha" in sky.channels()
     if alpha:
-        probe = [sky.sample("alpha", (i + 0.5) / 16.0 * w, (0.55 + 0.4 * (j + 0.5) / 4.0) * h)
+        probe = [sky.sample(layer + ".alpha", (i + 0.5) / 16.0 * w, (0.55 + 0.4 * (j + 0.5) / 4.0) * h)
                  for i in range(16) for j in range(4)]
         alpha = max(probe) - min(probe) > 0.05
     n["cloud_key"].setValue("Alpha" if alpha else "Blue Sky")
@@ -222,9 +247,9 @@ def cloud_setup(n, st=None):
             u = lon / (2.0 * math.pi) + 0.5
             x, y = (u - math.floor(u)) * w, (lat / math.pi + 0.5) * h
             if alpha:
-                keys.append(1.0 - max(0.0, min(1.0, sky.sample("alpha", x, y))))
+                keys.append(1.0 - max(0.0, min(1.0, sky.sample(layer + ".alpha", x, y))))
                 continue
-            r, g, bl = [sky.sample(c, x, y) for c in ("red", "green", "blue")]
+            r, g, bl = [sky.sample("%s.%s" % (layer, c), x, y) for c in ("red", "green", "blue")]
             # The same key as the kernel: blue sky (away from the horizon) or the sun itself.
             key = max(0.0, min(1.0, (bl - r) / max(bl, 1e-4) * 3.0)) * max(0.0, min(1.0, (d[1] - 0.05) / 0.15))
             disc = max(0.0, min(1.0, (0.2126 * r + 0.7152 * g + 0.0722 * bl) / 50.0 - 1.0))
@@ -232,9 +257,11 @@ def cloud_setup(n, st=None):
     keys.sort()
     if keys[-max(len(keys) // 10, 1)] < 0.2:
         n["cloud_from"].setValue("Noise")
+        sync_clouds_input(n)
         return ("Clouds input: the sky round the sun has hardly any %s, so the gaps stay on "
                 "Noise (check with view output > Cloud Gaps)." % ("gaps in the alpha" if alpha else "blue gaps"))
-    n["cloud_from"].setValue("Clouds Input")
+    n["cloud_from"].setValue(source)
+    sync_clouds_input(n)
     cover = max(0.3, min(0.97, keys[int(len(keys) * 0.75)]))
     n["cloud_cover"].setValue(round(cover, 3))
     if st is None:

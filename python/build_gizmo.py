@@ -4,10 +4,10 @@ Run from a terminal (NukeX licence, -i so BlinkScript can compile):
 
     Nuke15.1.exe --nukex -i -t python/build_gizmo.py
 
-The group has four inputs: the plate (with depth in a channel), an optional Camera,
-an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
-atmos_haze_color layer lights the haze and whose haze settings can be inherited, and an
-optional lat-long `clouds` input (normally the HDRI) whose cloud gaps can let the sun through.
+The group has three inputs: the plate (with depth in a channel), an optional Camera,
+and an optional lat-long `atmos` input, normally an EzAtmosScatter node, whose
+atmos_haze_color layer lights the haze and whose haze settings can be inherited. A fourth,
+`clouds`, is only there while 'gaps from' is Clouds Input: a sky whose gaps let the sun through.
 """
 
 import base64
@@ -29,6 +29,27 @@ LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_
 # EzAtmosScatter layers the gizmo reads. They must exist when it is built and loaded, or the
 # Shuffles picking them fall back to rgba.
 ATMOS_LAYERS = ["atmos_haze_color", "atmos_haze_sun", "atmos_haze_sky", "atmos_inscatter", "atmos_transmittance"]
+# EzAtmosScatter's HDRI (rgba), turned with its skydome, for cloud gaps from the sky.
+CLOUDS_LAYER = "atmos_clouds"
+
+# The clouds input is only on the node while 'gaps from' is Clouds Input: this adds or removes
+# it (the Input inside the group) when the panel opens and when the menu changes. Only from the
+# open panel: editing a group's insides while a script loads drops the node's connections.
+# Plain Python, not the tool code, so it works on nodes saved with older tool code too.
+SYNC_CLOUDS_INPUT = (
+    "def _ezhaze_sync_clouds(node):\n"
+    "    want = node['cloud_from'].value() == 'Clouds Input'\n"
+    "    if not want and node.input(3) is not None:\n"
+    "        node.setInput(3, None)\n"
+    "    with node:\n"
+    "        inp = nuke.toNode('clouds')\n"
+    "        if want and inp is None:\n"
+    "            inp = nuke.nodes.Input(name='clouds', xpos=1050, ypos=-300)\n"
+    "            pick = nuke.toNode('CloudsOrNone')\n"
+    "            if pick is not None:\n"
+    "                pick.setInput(1, inp)\n"
+    "        elif not want and inp is not None:\n"
+    "            nuke.delete(inp)\n")
 # (menu label, key of the node that feeds the main rgb)
 VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"),
                 ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
@@ -94,6 +115,13 @@ def _add_atmos_knobs(add):
 
 def _link_atmos_knobs(group):
     group["atm_found"].setExpression("[python -execlocal {%sret = 1 if a is not None else 0}]" % _FIND_ATMOS)
+    # Clouds from the clouds input (when picked and plugged in), or from the atmos node's
+    # atmos_clouds layer (when picked and the atmos node outputs a lat-long), else noise.
+    group["clouds_source"].setExpression(
+        "[python -execlocal {%sm = int(nuke.thisNode()['cloud_from'].getValue())\n"
+        "ret = 1 if m == 2 and nuke.thisNode().input(3) is not None else (2 if m == 1 and a is not None "
+        "and 'atmos_clouds.red' in a.channels() and not (a.knob('output_mapping') and "
+        "int(a['output_mapping'].getValue()) != 0) else 0)}]" % _FIND_ATMOS)
     for name, source, size in ATMOS_KNOBS:
         for i in range(size):
             pick = ", %d" % i if size > 1 else ""
@@ -185,8 +213,11 @@ def _knob_changed_script(look_knobs):
     # Only from the open panel: knobChanged also runs while a script loads (and on the farm),
     # where it must not change the knobs an artist tuned. The tool code is only run for the
     # knobs it handles, so other changes stay cheap.
-    return ("k = nuke.thisKnob().name()\n"
+    return (SYNC_CLOUDS_INPUT +
+            "k = nuke.thisKnob().name()\n"
             "n = nuke.thisNode()\n"
+            "if k in ('cloud_from', 'showPanel') and nuke.GUI and n.shown():\n"
+            "    _ezhaze_sync_clouds(n)\n"
             "if k == 'showPanel' and n.knob('tool_code'):\n"
             "    _ezd = {}\n"
             "    exec(__import__('base64').b64decode(n['tool_code'].value()).decode(), _ezd)\n"
@@ -526,13 +557,19 @@ def _add_knobs(group, depth_pick, env_pick):
                  "makes longer beams.", 3000.0))
     add(*_double("cloud_size", "gap size (m)", 50, 20000, "Size of the gaps and the cloud between them.", 1500.0))
     add(*_double("cloud_softness", "gap softness", 0.01, 1, "How soft the edges of the gaps are.", 0.15))
-    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Clouds Input"])
-    cloud_from.setTooltip("Noise: made-up gaps of gap size. Clouds Input: the gaps in the sky plugged into the "
-                          "clouds input (normally the HDRI) work as a gobo: blue sky lets the sun through, cloud "
-                          "doesn't, so the beams line up with the gaps you see. Cloud cover is then how blue a gap "
-                          "must be; cloud height is how high those clouds are. Falls back to Noise with nothing "
-                          "plugged in.")
+    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Sky (from atmos)", "Clouds Input"])
+    cloud_from.setTooltip("Noise: made-up gaps of gap size. Sky (from atmos): the clouds in the HDRI the atmos "
+                          "node is lit by, already turned with its skydome, work as a gobo: blue sky lets the sun "
+                          "through, cloud doesn't, so the beams line up with the gaps you see. Needs the atmos "
+                          "node on output as Lat-long. Clouds Input: the same from a sky (or keyed matte) you plug "
+                          "into the clouds input, which appears on the node while this is picked. Cloud cover is "
+                          "then how blue a gap must be; cloud height is how high those clouds are. Falls back to "
+                          "Noise when the sky isn't there.")
     add(cloud_from)
+    # Where the cloud gaps read from: 0 noise, 1 the clouds input, 2 the atmos node's clouds layer.
+    source = nuke.Int_Knob("clouds_source", "clouds source")
+    source.setFlag(nuke.INVISIBLE)
+    add(source)
     cloud_key = nuke.Enumeration_Knob("cloud_key", "gap key", ["Blue Sky", "Alpha"])
     cloud_key.setTooltip("What in the clouds input counts as a gap. Blue Sky: keyed from the colours (blue sky "
                          "and the sun). Alpha: a matte you keyed yourself in the clouds input's alpha, 1 where "
@@ -646,7 +683,7 @@ def _link_haze(node, output):
     for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
                  "cloud_breakup_size"):
         _link(node, name, "parent." + name)
-    _link(node, "cloud_from_map", "[exists parent.input3] && parent.cloud_from==1")
+    _link(node, "cloud_from_map", "parent.clouds_source != 0")
     _link(node, "cloud_key_alpha", "parent.cloud_key==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
@@ -659,6 +696,7 @@ def _link_haze(node, output):
 def build():
     for layer in LAYERS + ATMOS_LAYERS:
         nuke.Layer(layer, ["%s.red" % layer, "%s.green" % layer, "%s.blue" % layer])
+    nuke.Layer(CLOUDS_LAYER, ["%s.%s" % (CLOUDS_LAYER, c) for c in ("red", "green", "blue", "alpha")])
 
     group = nuke.nodes.Group(name="EzDepthHaze1")
     group["tile_color"].setValue(0x6a8fa5ff)
@@ -671,10 +709,15 @@ def build():
     # A tiny black stand-in keeps the kernel's cloud input fed when nothing is plugged in.
     no_clouds = nuke.nodes.Constant(name="NoClouds", xpos=1150, ypos=-300)
     no_clouds["format"].setValue(nuke.addFormat("8 4 1 EzDepthHaze_tiny"))
+    # EzAtmosScatter's atmos_clouds layer: its HDRI as the passes see it, skydome and all.
+    atmos_clouds = nuke.nodes.Shuffle2(name="AtmosCloudsPick", xpos=900, ypos=-250)
+    atmos_clouds.setInput(0, atmos)
+    atmos_clouds["in1"].setValue("atmos_clouds")
     clouds = nuke.nodes.Switch(name="CloudsOrNone", xpos=1050, ypos=-200)
     clouds.setInput(0, no_clouds)
     clouds.setInput(1, clouds_in)
-    clouds["which"].setExpression("[exists parent.input3]")
+    clouds.setInput(2, atmos_clouds)
+    clouds["which"].setExpression("parent.clouds_source")
 
     # The depth goes to red of its own stream; the haze colour lat-long to rgb of another.
     depth_pick = nuke.nodes.Copy(name="DepthPick", from0="depth.Z", to0="rgba.red", xpos=150, ypos=-200)
@@ -934,6 +977,7 @@ def save_gizmo(group, path=GIZMO_PATH):
     header = "version %d.%d v%d\n" % (nuke.NUKE_VERSION_MAJOR, nuke.NUKE_VERSION_MINOR, nuke.NUKE_VERSION_RELEASE)
     for layer in LAYERS + ATMOS_LAYERS:
         header += "add_layer {%s %s.red %s.green %s.blue}\n" % (layer, layer, layer, layer)
+    header += "add_layer {%s %s.red %s.green %s.blue %s.alpha}\n" % ((CLOUDS_LAYER,) * 5)
     with open(path, "w") as f:
         f.write(header + body[body.index("Gizmo {"):])
     # The same node as a plain Group, for studios that keep tools in scripts rather than
