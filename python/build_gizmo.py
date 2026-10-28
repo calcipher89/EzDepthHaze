@@ -19,6 +19,8 @@ import nuke
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
 import ezdepthhaze  # noqa: E402  (preset names)
+# Shown on the node; bump it with each tagged release.
+VERSION = "1.0.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -353,6 +355,8 @@ def _add_easy_knobs(add):
                       ".backup subfolder.")
     remove.clearFlag(nuke.STARTLINE)
     add(remove)
+    add(nuke.Text_Knob("version_divider", ""))
+    add(nuke.Text_Knob("version", "version", "EzDepthHaze v" + VERSION))
     # The looks folders, as hidden file knobs so a studio can set them per show (in a knob
     # default or a script) without Python. $EZHAZE_USER_LOOKS / $EZHAZE_STUDIO_LOOKS still win.
     # Paths may use $VAR, ${VAR} or [getenv VAR].

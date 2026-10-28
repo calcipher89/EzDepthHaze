@@ -82,6 +82,8 @@ Group {
  addUserKnob {4 save_to l "save to" t "User or Studio looks folder; both are in the hidden 'user looks folder' and 'studio looks folder' knobs, which a pipeline can set (an environment variable wins when set)." -STARTLINE M {User Studio}}
  addUserKnob {22 save_look l "save look" -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['easy_message']('Saved ' + d\['save_look'](n))\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
  addUserKnob {22 delete_look l "delete look" t "Deletes the saved look picked in the menu, after asking. A copy is kept in the folder's .backup subfolder." -STARTLINE T "n = nuke.thisNode()\nd = \{\}\nexec(__import__('base64').b64decode(n\['tool_code'].value()).decode(), d)\ntry:\n    d\['delete_look'](n)\nexcept ValueError as e:\n    d\['easy_message'](str(e))\n"}
+ addUserKnob {26 version_divider l "" +STARTLINE}
+ addUserKnob {26 version T "EzDepthHaze v1.0.0"}
  addUserKnob {2 user_looks_dir l "user looks folder" +INVISIBLE}
  user_looks_dir ~/.nuke/ezdepthhaze_looks
  addUserKnob {2 studio_looks_dir l "studio looks folder" +INVISIBLE}
@@ -244,7 +246,7 @@ Group {
   xpos 1050
   ypos -200
  }
-set N55494500 [stack 0]
+set N4dd54500 [stack 0]
  Input {
   inputs 0
   name atmos
@@ -252,7 +254,7 @@ set N55494500 [stack 0]
   ypos -300
   number 2
  }
-set N55484800 [stack 0]
+set N4dd44800 [stack 0]
 add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_inscatter.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -263,7 +265,7 @@ add_layer {atmos_inscatter atmos_inscatter.red atmos_inscatter.green atmos_insca
   xpos 750
   ypos -200
  }
-push $N55484800
+push $N4dd44800
 add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green atmos_transmittance.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -290,7 +292,7 @@ add_layer {atmos_transmittance atmos_transmittance.red atmos_transmittance.green
   xpos 750
   ypos -120
  }
-push $N55484800
+push $N4dd44800
  Shuffle2 {
   fromInput1 {{0} B}
   in1 atmos_haze_color
@@ -300,7 +302,7 @@ push $N55484800
   xpos 600
   ypos -200
  }
-set N55485800 [stack 0]
+set N4dd45800 [stack 0]
  Multiply {
   channels rgb
   value {{"1 - parent.sun_share"}}
@@ -308,7 +310,7 @@ set N55485800 [stack 0]
   xpos 650
   ypos -170
  }
-push $N55484800
+push $N4dd44800
 add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -326,8 +328,8 @@ add_layer {atmos_haze_sky atmos_haze_sky.red atmos_haze_sky.green atmos_haze_sky
   xpos 500
   ypos -140
  }
-set N55495900 [stack 0]
-push $N55485800
+set N4dd55900 [stack 0]
+push $N4dd45800
  Multiply {
   channels rgb
   value {{parent.sun_share}}
@@ -335,7 +337,7 @@ push $N55485800
   xpos 600
   ypos -170
  }
-push $N55484800
+push $N4dd44800
 add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun.blue}
  Shuffle2 {
   fromInput1 {{0} B}
@@ -353,7 +355,7 @@ add_layer {atmos_haze_sun atmos_haze_sun.red atmos_haze_sun.green atmos_haze_sun
   xpos 450
   ypos -140
  }
-set N55495400 [stack 0]
+set N4dd55400 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -404,8 +406,8 @@ set N55495400 [stack 0]
   xpos 750
   ypos -30
  }
-set N55503400 [stack 0]
-push $N55495900
+set N4ddc3400 [stack 0]
+push $N4dd55900
  Multiply {
   channels rgb
   value {{parent.haze_tint.r} {parent.haze_tint.g} {parent.haze_tint.b} 1}
@@ -413,8 +415,8 @@ push $N55495900
   xpos 500
   ypos -80
  }
-set N55503c00 [stack 0]
-push $N55495400
+set N4ddc3c00 [stack 0]
+push $N4dd55400
  Multiply {
   channels rgb
   value {{parent.haze_tint.r} {parent.haze_tint.g} {parent.haze_tint.b} 1}
@@ -422,15 +424,15 @@ push $N55495400
   xpos 450
   ypos -80
  }
-set N55503800 [stack 0]
+set N4ddc3800 [stack 0]
  Input {
   inputs 0
   name plate
   xpos 0
   ypos -300
  }
-set N55484000 [stack 0]
-push $N55484000
+set N4dd44000 [stack 0]
+push $N4dd44000
  Copy {
   inputs 2
   from0 depth.Z
@@ -439,7 +441,7 @@ push $N55484000
   xpos 150
   ypos -200
  }
-set N55485400 [stack 0]
+set N4dd45400 [stack 0]
  Reformat {
   type scale
   scale {{"\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1"}}
@@ -448,8 +450,8 @@ set N55485400 [stack 0]
   xpos 150
   ypos -130
  }
-set N55542800 [stack 0]
-push $N55484000
+set N4de02800 [stack 0]
+push $N4dd44000
  Reformat {
   type scale
   scale {{"\$gui ? (parent.viewer_resolution==0 ? 1 : parent.viewer_resolution==1 ? 0.5 : 0.25) : 1"}}
@@ -457,7 +459,7 @@ push $N55484000
   xpos 0
   ypos -130
  }
-set N55542000 [stack 0]
+set N4de02000 [stack 0]
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -545,13 +547,13 @@ set N55542000 [stack 0]
   xpos 540
   ypos -50
  }
-set N2c30bc00 [stack 0]
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N2d65bc00 [stack 0]
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -639,13 +641,13 @@ push $N55542000
   xpos 420
   ypos -50
  }
-set N2c30b000 [stack 0]
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N2d65b000 [stack 0]
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -733,7 +735,7 @@ push $N55542000
   xpos 300
   ypos -50
  }
-set N2c30a400 [stack 0]
+set N2d65a400 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -741,22 +743,22 @@ set N2c30a400 [stack 0]
   name SurfaceVisibility
   xpos 480
  }
-set N2e348800 [stack 0]
-push $N2c30a400
+set N13658800 [stack 0]
+push $N2d65a400
  Remove {
   operation keep
   channels rgb
   name SurfaceSunlight
   xpos 600
  }
-set N2e348c00 [stack 0]
-push $N55542800
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N13658c00 [stack 0]
+push $N4de02800
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -857,7 +859,7 @@ push $N55542000
   xpos 180
   ypos -50
  }
-set N2c2c1800 [stack 0]
+set N2d611800 [stack 0]
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -865,8 +867,8 @@ set N2c2c1800 [stack 0]
   name Wisps
   xpos 360
  }
-set N2e348400 [stack 0]
-push $N2c2c1800
+set N13658400 [stack 0]
+push $N2d611800
  Shuffle2 {
   fromInput1 {{0} B}
   fromInput2 {{0} B}
@@ -874,14 +876,14 @@ push $N2c2c1800
   name FogShare
   xpos 240
  }
-push $N55485400
-push $N55542800
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+push $N4dd45400
+push $N4de02800
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -982,14 +984,14 @@ push $N55542000
   xpos -300
   ypos -50
  }
-set N55543800 [stack 0]
-push $N55542800
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N4de03800 [stack 0]
+push $N4de02800
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -1104,16 +1106,16 @@ push $N55542000
   xpos -180
   ypos -20
  }
-set N2e304800 [stack 0]
-push $N55485400
-push $N55543800
-push $N55542800
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N13614800 [stack 0]
+push $N4dd45400
+push $N4de03800
+push $N4de02800
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -1228,7 +1230,7 @@ push $N55542000
   xpos -300
   ypos -20
  }
-set N2e304400 [stack 0]
+set N13614400 [stack 0]
  Merge2 {
   inputs 2
   operation plus
@@ -1236,7 +1238,7 @@ set N2e304400 [stack 0]
   name InScatter
   xpos 0
  }
-set N2e305400 [stack 0]
+set N13615400 [stack 0]
  Merge2 {
   inputs 2
   operation multiply
@@ -1245,17 +1247,17 @@ set N2e305400 [stack 0]
   xpos 240
   ypos 40
  }
-set N2e348000 [stack 0]
-push $N2e304400
-push $N55485400
-push $N55543800
-push $N55542800
-push $N55494500
-push $N55503400
-push $N55503c00
-push $N55503800
-push $N55542800
-push $N55542000
+set N13658000 [stack 0]
+push $N13614400
+push $N4dd45400
+push $N4de03800
+push $N4de02800
+push $N4dd54500
+push $N4ddc3400
+push $N4ddc3c00
+push $N4ddc3800
+push $N4de02800
+push $N4de02000
  BlinkScript {
   inputs 6
   recompileCount 2
@@ -1377,13 +1379,13 @@ push $N55542000
   name ShadowLoss
   xpos 120
  }
-set N2e305800 [stack 0]
-push $N2e304800
-push $N2e304400
-push $N2e305400
-push $N55485400
-push $N55543800
-push $N55543800
+set N13615800 [stack 0]
+push $N13614800
+push $N13614400
+push $N13615400
+push $N4dd45400
+push $N4de03800
+push $N4de03800
  BlinkScript {
   inputs 3
   recompileCount 2
@@ -1398,8 +1400,8 @@ push $N55543800
   xpos 60
   ypos -20
  }
-set N2e305000 [stack 0]
-push $N55494500
+set N13615000 [stack 0]
+push $N4dd54500
  Expression {
   temp_name0 lon
   temp_expr0 "((x + 0.5) / width - 0.5) * 2 * pi + Pass_sun.EzDepthHaze_env_rotation * pi / 180"
@@ -1426,20 +1428,20 @@ push $N55494500
   xpos 1050
   ypos -110
  }
-push $N2c30bc00
-push $N2c30b000
-push $N2e348800
-push $N2e348c00
-push $N2e348400
-push $N2e348000
-push $N2e305800
-push $N2e304800
-push $N2e304400
-push $N2e305400
-push $N2e305000
-push $N2e305400
-push $N2e305000
-push $N2e348c00
+push $N2d65bc00
+push $N2d65b000
+push $N13658800
+push $N13658c00
+push $N13658400
+push $N13658000
+push $N13615800
+push $N13614800
+push $N13614400
+push $N13615400
+push $N13615000
+push $N13615400
+push $N13615000
+push $N13658c00
  Multiply {
   channels rgb
   value {{parent.surface_add}}
@@ -1447,7 +1449,7 @@ push $N2e348c00
   xpos 600
   ypos 40
  }
-push $N55484000
+push $N4dd44000
  Merge2 {
   inputs 2
   operation plus
@@ -1479,7 +1481,7 @@ push $N55484000
   xpos 0
   ypos 200
  }
-push $N55484000
+push $N4dd44000
  Copy {
   inputs 2
   channels rgb
