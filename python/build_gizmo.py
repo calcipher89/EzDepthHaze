@@ -19,6 +19,8 @@ import nuke
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python"))
 import ezdepthhaze  # noqa: E402  (preset names)
+import layout_hints  # noqa: E402
+import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
 VERSION = "1.0.0"
 BLINK = os.path.join(ROOT, "blink")
@@ -44,9 +46,10 @@ SYNC_CLOUDS_INPUT = (
     "    with node:\n"
     "        inp = nuke.toNode('clouds')\n"
     "        if want and inp is None:\n"
-    "            inp = nuke.nodes.Input(name='clouds', xpos=1050, ypos=-300)\n"
     "            pick = nuke.toNode('CloudsOrNone')\n"
+    "            inp = nuke.nodes.Input(name='clouds')\n"
     "            if pick is not None:\n"
+    "                inp.setXYpos(pick.xpos() + 150, pick.ypos() - 48)\n"
     "                pick.setInput(1, inp)\n"
     "        elif not want and inp is not None:\n"
     "            nuke.delete(inp)\n")
@@ -957,6 +960,10 @@ def build():
     group.end()
 
     _add_knobs(group, depth_pick, env_pick)
+    # Spread the nodes out: trunk down the left, a Backdrop per module, Dots at the bends.
+    # The xpos/ypos given above are only starting points.
+    for problem in node_layout.apply_nuke(group, **layout_hints.HINTS):
+        print("layout: " + problem)
     return group
 
 
