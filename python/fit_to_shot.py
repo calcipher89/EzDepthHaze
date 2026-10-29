@@ -194,9 +194,11 @@ def sync_clouds_input(n):
     with n:
         inp = nuke.toNode("clouds")
         if want and inp is None:
-            inp = nuke.nodes.Input(name="clouds", xpos=1050, ypos=-300)
             pick = nuke.toNode("CloudsOrNone")
+            inp = nuke.nodes.Input(name="clouds")
             if pick is not None:
+                # Where the build's layout puts it: up and right of the switch it feeds.
+                inp.setXYpos(pick.xpos() + 150, pick.ypos() - 48)
                 pick.setInput(1, inp)
         elif not want and inp is not None:
             nuke.delete(inp)

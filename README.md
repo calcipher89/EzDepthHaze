@@ -371,3 +371,13 @@ The build writes both `gizmos/EzDepthHaze.gizmo` and its Group version `groups/E
 ```
 Nuke15.1.exe --nukex -i -t python/build_gizmo.py
 ```
+
+The build also lays out the nodes inside the group: the plate straight down the left, each
+module (inputs, cloud gaps, haze light, work resolution, passes, silhouettes, comp, AOV
+layers) on its own Backdrop below the one it reads from, and Dots where pipes bend. The
+modules are listed in `python/layout_hints.py`; a node added to the build needs a module
+there. To redo the layout of the saved files without Nuke:
+
+```
+python3 python/node_layout.py groups/EzDepthHaze_group.nk gizmos/EzDepthHaze.gizmo
+```
