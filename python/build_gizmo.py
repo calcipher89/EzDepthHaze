@@ -49,7 +49,7 @@ SYNC_CLOUDS_INPUT = (
     "            pick = nuke.toNode('CloudsOrNone')\n"
     "            inp = nuke.nodes.Input(name='clouds')\n"
     "            if pick is not None:\n"
-    "                inp.setXYpos(pick.xpos() + 150, pick.ypos() - 48)\n"
+    "                inp.setXYpos(pick.xpos() + 180, pick.ypos() - 60)\n"
     "                pick.setInput(1, inp)\n"
     "        elif not want and inp is not None:\n"
     "            nuke.delete(inp)\n")

@@ -11,7 +11,9 @@ MODULES = [
     ("Work resolution", 0x4a5a6aff, r"DepthPick|WorkDepth|WorkPlate"),
     ("Haze passes", 0x3a5a4aff, r"Pass_.*|Smooth_.*|Full_.*"),
     ("Silhouettes + surface", 0x3a5a4aff, r"Silhouette_.*|Surface(Visibility|Sunlight)|Wisps|FogShare"),
-    ("Haze comp", 0x5a4a6aff, r"InScatter|FogInScatter|ShadowLoss|SurfaceAdd|PlatePlusSurface|PlateTimesT|Hazed|ViewOutput"),
+    ("Haze comp", 0x5a4a6aff, r"InScatter|FogInScatter|ShadowLoss|SurfaceAdd|PlatePlusSurface|PlateTimesT|Hazed"),
+    # Its own band, so the thirteen pipes into it come in along rails rather than across the comp.
+    ("View output", 0x5a4a6aff, r"ViewOutput"),
     ("AOV layers", 0x6a4a4aff, r"MainRGB|Layer_.*|ClipTo|Output\d*"),
 ]
 
