@@ -18,14 +18,14 @@ Running it again gives the same graph: Dots and Backdrops it made before are tak
 
 import re
 
-COL, ROW = 150, 48         # grid pitch in node graph units
+COL, ROW = 180, 60         # grid pitch in node graph units
 W, H, DOT = 80, 18, 12     # default node tile and Dot sizes
-RAIL = 24                  # height of one rail of Dots at the top of a band
+RAIL = 30                  # height of one rail of Dots at the top of a band
 BAND_GAP = 150             # from one band's last row to the next band's top: Backdrop label room
 DOT_PREFIX = "LayoutDot"
 BACKDROP_PREFIX = "Backdrop_"
 # Lane slots in the gap right of a column, as x offsets of the Dot from the column's left edge.
-LANES = (W + 6, W + 27, W + 48)
+LANES = (W + 6, W + 30, W + 54, W + 78)
 
 
 class Plan(object):
@@ -150,12 +150,26 @@ def layout(nodes, modules=(), left=(), labels=None, direct=()):
 
     cell = set((band[n], col[n], row[n]) for n in order)
     _route(plan, order, inputs, consumers, band, col, row, cell, rails, on_trunk, set(direct))
+    _unblock_steps(plan, order, inputs, col)
+    _nudge(plan, order, inputs)
     _backdrops(plan, order, rules, band, rails)
     return plan
 
 
 def _route(plan, order, inputs, consumers, band, col, row, cell, rails, on_trunk, direct):
     lanes = {}  # x -> [(y0, y1)] already running down that lane
+    drops = []  # (x, y) of the Dots rails drop into nodes from, which lanes keep clear of
+
+    def drop_x(x, y):
+        """x for a rail's drop Dot, moved off any lane already running past it."""
+        for shift in (0, 6, -6, 12, -12, 18, -18, 24, -24):
+            if not any(abs(lx - (x + shift)) < DOT + 4 and a - DOT < y < z + DOT
+                       for lx, spans in lanes.items() for a, z in spans):
+                drops.append((x + shift, y))
+                return x + shift
+        drops.append((x, y))
+        return x
+    rank_of = dict((n, k) for k, n in enumerate(order))
     routed = {}  # (source, node) -> what the node's input now points at
 
     def free(b, c, r):
@@ -172,7 +186,8 @@ def _route(plan, order, inputs, consumers, band, col, row, cell, rails, on_trunk
         for g in range(c, c + step * 8, step):
             for off in LANES:
                 x = g * COL + off
-                if all(y1 < a - DOT - 4 or z + DOT + 4 < y0 for a, z in lanes.get(x, [])):
+                if all(y1 < a - DOT - 4 or z + DOT + 4 < y0 for a, z in lanes.get(x, [])) and \
+                        not any(abs(px - x) < DOT + 4 and y0 - DOT < py < y1 + DOT for px, py in drops):
                     lanes.setdefault(x, []).append((y0, y1))
                     return x
         return c * COL + LANES[-1]
@@ -195,6 +210,7 @@ def _route(plan, order, inputs, consumers, band, col, row, cell, rails, on_trunk
 
     # Pipes inside a band that are a straight drop, a short step, or one bend.
     far = dict((n, []) for n in order)  # source -> [(node, input)] still to route
+    corners = {}  # (source, along, side) -> one-bend pipes, see below
     for n in order:
         for i, src in enumerate(inputs[n]):
             if src is None:
@@ -214,59 +230,255 @@ def _route(plan, order, inputs, consumers, band, col, row, cell, rails, on_trunk
                     rd == rs and clear_row(b, rs, cs, cd):
                 connect(n, i, src, src)
             elif free(b, cd, rs) and clear_row(b, rs, cs, cd) and clear_col(b, cd, rs, rd):
-                connect(n, i, src, dot(src, mid_x(cd), centre_y(src)))
+                corners.setdefault((src, "row", cd > cs), []).append((abs(cd - cs), mid_x(cd), centre_y(src), n, i))
             elif free(b, cs, rd) and clear_col(b, cs, rs, rd + 1) and clear_row(b, rd, cs, cd):
-                connect(n, i, src, dot(src, mid_x(cs), centre_y(n)))
+                corners.setdefault((src, "col", 0), []).append((rd - rs, mid_x(cs), centre_y(n), n, i))
             else:
                 far[src].append((n, i))
+    def side_of(src, n):
+        return 1 if col[src] >= col[n] else -1
+
+    def into_side(src, n):  # comes in from the side rather than along a rail
+        return band[n] == band[src] or n in on_trunk
+
+    # A bend into the side of a node that other pipes also come into from that side becomes a
+    # lane pipe too, so they can all be given their own height.
+    side_ins = set((n, side_of(src, n)) for src in order for n, i in far[src] if into_side(src, n))
+    for key in list(corners):
+        if key[1] == "col":
+            src = key[0]
+            for item in list(corners[key]):
+                if (item[3], side_of(src, item[3])) in side_ins:
+                    corners[key].remove(item)
+                    far[src].append((item[3], item[4]))
+
+    # One bend each: the Dots one source turns at along the same line follow on from each other,
+    # nearest first, so the pipes run end to end instead of on top of each other.
+    for (src, _, _), line in sorted(corners.items(), key=lambda c: rank_of[c[0][0]]):
+        last, at = src, {}
+        for _, x, y, n, i in sorted(line):
+            if (x, y) not in at:
+                last = at[(x, y)] = dot(last, x, y)
+            if (src, n) in routed:
+                plan.rewire.append((n, i, routed[(src, n)]))
+            else:
+                connect(n, i, src, at[(x, y)])
 
     # The rest leave their source sideways into a lane, one lane per source, and run down it.
-    # Into another band's side node: along that band's rail to the Dot above it. Anything
-    # else: level with the node when its row is clear, else from the gap above it.
+    # Into another band's side node: along that band's rail to a Dot above it, each rail at its
+    # own spot so no pipe runs through another rail's Dot. Into anything else: from the lane
+    # beside it, several pipes into one node coming in at different heights (the nearest lane
+    # highest, and clear of the node's own pipes out on that side), so none crosses a Dot.
+    def kind(src, n):
+        """How a lane pipe gets into n: 'rail' (down from its band's rail), 'beside' (from the
+        rail down a lane beside n, its column being taken), 'in' (level from the source's lane)
+        or 'over' (n's row is blocked that far: across the gap above, down a lane beside n)."""
+        b, cd, rd = band[n], col[n], row[n]
+        if not into_side(src, n):
+            return "rail" if clear_col(b, cd, -1, rd) else "beside"
+        g = col[src]
+        between = range(cd + 1, g + 1) if g >= cd else range(g + 1, cd)
+        return "in" if all(free(b, c, rd) for c in between) else "over"
+
+    # Everything coming into one side of a node gets its own height there, the nearest lane
+    # highest, and clear of the node's own pipe out on that side.
+    entries = {}  # (node, side) -> sorted [(distance, source)]
+    for src in order:
+        for n, i in far[src]:
+            how = kind(src, n)
+            if how != "rail":
+                key = (abs(col[src] - col[n]) if how == "in" else 0, rank_of[src])
+                if key not in entries.setdefault((n, side_of(src, n)), []):
+                    entries[(n, side_of(src, n))].append(key)
+    for k in entries:
+        entries[k].sort()
+
+    def busy_side(n, side):  # does a pipe leave n level on this side?
+        return side == 1 and bool(far[n]) or bool(corners.get((n, "row", side == 1)))
+
+    def entry_y(src, n):
+        side = side_of(src, n)
+        ins = entries[(n, side)]
+        how = kind(src, n)
+        if how != "in":
+            return centre_y(n)  # down a lane right beside n: in level
+        k = ins.index((abs(col[src] - col[n]), rank_of[src]))
+        # Above whatever comes in level beside it, or leaves level on that side.
+        level = busy_side(n, side) or any(key[0] == 0 for key in ins)
+        up = len(ins) - 1 - k + (1 if level else 0)
+        return centre_y(n) - up * RAIL
+
+    def rail_dx(n, y):
+        ys = sorted(set(rails[(band[n], s)] for s in inputs[n] if s is not None and (band[n], s) in rails))
+        k = ys.index(y)
+        # Centre out: the top rail straight above, the next ones either side of it.
+        return int(((k + 1) // 2) * (1 if k % 2 else -1) * 18)
+
+    tracks = {}  # (band, row) -> [(x0, x1, y)] pipes running across the gap above that row
+
+    def track(n, xa, xb, up=0):
+        """y of a free track from xa to xb across the gap above n's row (two tracks there), or
+        when those are taken, above one of the up rows over it."""
+        lo, hi = min(xa, xb) - DOT, max(xa, xb) + DOT
+        for k in range(up + 1):
+            taken = tracks.setdefault((band[n], row[n] - k), [])
+            top = plan.pos[n][1] - k * ROW
+            for y in (top - 6 - DOT, top - 20 - DOT):
+                if not any(ty == y and a < hi and lo < z for a, z, ty in taken):
+                    taken.append((lo, hi, y))
+                    return y
+        return None
+
+    def near_x(n, x):  # a Dot in the gap beside n, on x's side
+        right = x > plan.pos[n][0]
+        return plan.pos[n][0] + (W + (COL - W) // 2 if right else -(COL - W) // 2) - DOT // 2
+
     for src in order:
         if not far[src]:
             continue
-        stops = {}
+        bottom = max(rails[(band[n], src)] if not into_side(src, n) else centre_y(n) for n, _ in far[src])
+        x = lane(col[src], centre_y(src), bottom)
+        legs = []  # (y on the lane, x it heads to, how, node, input, y it comes in at)
         for n, i in far[src]:
-            if band[n] != band[src] and n not in on_trunk:
-                stops.setdefault(rails[(band[n], src)], []).append((n, i, "rail"))
+            b, cd, rd = band[n], col[n], row[n]
+            how = kind(src, n)
+            if how == "rail":
+                y = rails[(b, src)]
+                legs.append((y, drop_x(mid_x(cd) + rail_dx(n, y), y), how, n, i, None))
+                continue
+            up = row[n] - row[src] - 1 if band[src] == b else row[n]
+            if how == "in":
+                y = max(entry_y(src, n), centre_y(src) + RAIL)
+                if y < centre_y(n):
+                    y = track(n, x, near_x(n, x))
+                if y is not None:
+                    legs.append((max(y, centre_y(src) + RAIL), x, how, n, i, None))
+                    continue
+                how = "over"
+            # Down a lane beside n: from the rail, or along a track in the gap above n's row.
+            if how == "beside":
+                y = rails[(b, src)]
             else:
-                stops.setdefault(centre_y(n), []).append((n, i, "in"))
-        x = lane(col[src], centre_y(src), max(stops) + ROW)
-        g = (x - LANES[0]) // COL
+                y = track(n, x, mid_x(cd), up)
+                if y is None:
+                    y = plan.pos[n][1] - 6 - DOT
+            side = side_of(src, n)
+            lx = lane(cd if side > 0 else cd - 1, y, centre_y(n), side)
+            legs.append((y, lx, how, n, i, entry_y(src, n) if how == "beside" else centre_y(n)))
         prev = dot(src, x, centre_y(src))
-        level = {}
-        for y in sorted(stops):
-            for n, i, how in sorted(stops[y], key=lambda s: abs(mid_x(col[s[0]]) - x)):
+        for y in sorted(set(l[0] for l in legs)):
+            stop = prev = dot(prev, x, y)
+            last = {-1: stop, 1: stop}
+            for _, tx, how, n, i, ey in sorted((l for l in legs if l[0] == y), key=lambda l: abs(l[1] - x)):
                 if (src, n) in routed:
                     plan.rewire.append((n, i, routed[(src, n)]))
                     continue
-                b, cd, rd = band[n], col[n], row[n]
-                between = range(cd + 1, g + 1) if g >= cd else range(g + 1, cd)
-                if how == "in" and all(free(b, c, rd) for c in between):
-                    if y not in level:
-                        prev = level[y] = dot(prev, x, y)
-                    connect(n, i, src, level[y])
+                if how == "in":
+                    # From above its level and further than the next gap over: on to a Dot in
+                    # that gap first, so the slope stays short and clear of its own pipe out.
+                    near = near_x(n, x)
+                    if y < centre_y(n) and abs(x - near) > (COL - W) // 2:
+                        connect(n, i, src, dot(stop, near, y))
+                    else:
+                        connect(n, i, src, stop)
                     continue
-                yh = y if how == "rail" else plan.pos[n][1] - (ROW - H) // 2 - DOT // 2
-                if yh not in level:
-                    prev = level[yh] = dot(prev, x, yh)
-                if how == "rail" and not clear_col(b, cd, -1, rd) or \
-                        how == "in" and (n in on_trunk or not free(b, cd, rd - 1)):
-                    # Something sits above it in its column: down the lane beside it.
-                    lx = lane(cd if g >= cd else cd - 1, yh, centre_y(n), 1 if g >= cd else -1)
-                    level[yh] = dot(level[yh], lx, yh)
-                    connect(n, i, src, dot(level[yh], lx, centre_y(n)))
-                    continue
-                dx = 0
-                if how == "rail":
-                    # Each rail drops to its own spot along the node, so no pipe runs
-                    # through another rail's Dot.
-                    ys = sorted(set(rails[(b, s2)] for s2 in inputs[n] if (b, s2) in rails))
-                    if len(ys) > 1:
-                        dx = int((ys.index(yh) - (len(ys) - 1) / 2.0) * min(18, (W - DOT) / (len(ys) - 1.0)))
-                level[yh] = dot(level[yh], mid_x(cd) + dx, yh)
-                connect(n, i, src, level[yh])
+                side = 1 if tx >= x else -1
+                last[side] = dot(last[side], tx, y)
+                if how == "rail" or ey - y < 2 * DOT:
+                    connect(n, i, src, last[side])
+                else:
+                    connect(n, i, src, dot(last[side], tx, ey))
+
+
+def _near_pipe(box, a, b, clear=3):
+    """Is box (x, y, w, h) on the straight pipe between points a and b?"""
+    (x0, y0), (x1, y1) = a, b
+    x, y, w, h = box
+    cx, cy = x + w / 2.0, y + h / 2.0
+    length2 = max((x1 - x0) ** 2 + (y1 - y0) ** 2, 1e-9)
+    t = max(0.0, min(1.0, ((cx - x0) * (x1 - x0) + (cy - y0) * (y1 - y0)) / length2))
+    return abs(x0 + t * (x1 - x0) - cx) < w / 2.0 + clear and abs(y0 + t * (y1 - y0) - cy) < h / 2.0 + clear
+
+
+def _unblock_steps(plan, order, inputs, col):
+    """A short diagonal step from one column to the next that runs over a Dot gets a bend
+    instead: across at the source's height then down, or down then across."""
+    final = dict((n, list(inputs[n])) for n in order)
+    for n, i, src in plan.rewire:
+        final[n][i] = src
+    boxes = [(n, (x, y, W, H)) for n, (x, y) in plan.pos.items()]
+    boxes += [(d["name"], (d["x"], d["y"], DOT, DOT)) for d in plan.dots]
+
+    def centre(box):
+        return box[0] + box[2] / 2.0, box[1] + box[3] / 2.0
+
+    def clear(a, b, skip):
+        return not any(_near_pipe(box, a, b) for m, box in boxes if m not in skip)
+    for n in order:
+        for i, src in enumerate(final[n]):
+            if src not in plan.pos or col[src] == col[n]:
+                continue
+            a, b = centre(plan.pos[src] + (W, H)), centre(plan.pos[n] + (W, H))
+            if clear(a, b, (src, n)):
+                continue
+            for corner in ((b[0], a[1]), (a[0], b[1])):
+                d = {"name": "%s%d" % (DOT_PREFIX, len(plan.dots) + 1), "input": src,
+                     "x": int(corner[0] - DOT / 2.0), "y": int(corner[1] - DOT / 2.0)}
+                dbox = (d["x"], d["y"], DOT, DOT)
+                if clear(a, corner, (src, n, d["name"])) and clear(corner, b, (src, n, d["name"])) and \
+                        not any(_near_pipe(dbox, centre(box), centre(box), 6) for m, box in boxes if m not in (src, n)):
+                    plan.dots.append(d)
+                    plan.rewire.append((n, i, d["name"]))
+                    boxes.append((d["name"], dbox))
+                    break
+
+
+def _nudge(plan, order, inputs):
+    """Last pass: a Dot still sitting on someone else's pipe slides a little along its own
+    pipes (up or down its lane, or along its track) to where it is clear."""
+    final = dict((n, list(inputs[n])) for n in order)
+    for n, i, src in plan.rewire:
+        final[n][i] = src
+    by_name = dict((d["name"], d) for d in plan.dots)
+
+    def box(m):
+        if m in by_name:
+            return by_name[m]["x"], by_name[m]["y"], DOT, DOT
+        return plan.pos[m] + (W, H)
+
+    def centre(m):
+        x, y, w, h = box(m)
+        return x + w / 2.0, y + h / 2.0
+    links = [(s, n) for n in order for s in final[n] if s is not None]
+    links += [(d["input"], d["name"]) for d in plan.dots]
+    names = list(plan.pos) + list(by_name)
+
+    def problems(m):  # pipes m sits on, and boxes m's own pipes run through
+        bad = sum(1 for a, b in links if m not in (a, b) and _near_pipe(box(m), centre(a), centre(b)))
+        for a, b in links:
+            if m in (a, b):
+                bad += sum(1 for o in names if o not in (a, b) and _near_pipe(box(o), centre(a), centre(b)))
+        return bad
+
+    def downhill(m):  # no pipe of m may run up
+        cy = centre(m)[1]
+        return all(centre(a)[1] <= cy + 1 for a, b in links if b == m) and \
+            all(cy <= centre(b)[1] + 1 for a, b in links if a == m)
+    for d in plan.dots:
+        m = d["name"]
+        start = problems(m)
+        if not start:
+            continue
+        x0, y0 = d["x"], d["y"]
+        best = (start, x0, y0)
+        for dx, dy in ((0, 7), (0, -7), (0, 12), (0, -12), (7, 0), (-7, 0), (12, 0), (-12, 0)):
+            d["x"], d["y"] = x0 + dx, y0 + dy
+            if downhill(m):
+                p = problems(m)
+                if p < best[0]:
+                    best = (p, d["x"], d["y"])
+        d["x"], d["y"] = best[1], best[2]
+
 
 def _backdrops(plan, order, rules, band, rails):
     boxes = []
@@ -301,6 +513,27 @@ def check(plan, classes, inputs, gap=6):
     for s, n in links:
         if s in where and n in where and where[s][0] + where[s][1] / 2.0 > where[n][0] + where[n][1] / 2.0 + 1:
             problems.append("runs up: %s -> %s" % (s, n))
+    # A Dot sitting on a pipe it is not part of, or a pipe running through a node, reads as a
+    # connection that is not there.
+    box = dict((b[0], b[1:]) for b in boxes)
+
+    def centre(n):
+        x, y, w, h = box[n]
+        return x + w / 2.0, y + h / 2.0
+    for s, n in set(links):
+        if s not in box or n not in box:
+            continue
+        (x0, y0), (x1, y1) = centre(s), centre(n)
+        length2 = max((x1 - x0) ** 2 + (y1 - y0) ** 2, 1e-9)
+        for m, (x, y, w, h) in box.items():
+            if m in (s, n):
+                continue
+            # Nearest point of the pipe to the box centre, then how far inside the box it is.
+            cx, cy = x + w / 2.0, y + h / 2.0
+            t = max(0.0, min(1.0, ((cx - x0) * (x1 - x0) + (cy - y0) * (y1 - y0)) / length2))
+            px, py = x0 + t * (x1 - x0), y0 + t * (y1 - y0)
+            if abs(px - cx) < w / 2.0 + 3 and abs(py - cy) < h / 2.0 + 3:
+                problems.append("on a pipe: %s on %s -> %s" % (m, s, n))
     for k, a in enumerate(plan.backdrops):
         for b in plan.backdrops[k + 1:]:
             if a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"] and \
