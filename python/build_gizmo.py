@@ -851,7 +851,8 @@ def build():
 
     passes = {}
     for i, (key, output) in enumerate((("transmittance", 1), ("sun", 3), ("sky", 4), ("sun_free", 5),
-                                       ("masks", 6), ("surface_raw", 7), ("P", 8), ("N", 9))):
+                                       ("masks", 6), ("surface_raw", 7), ("P", 8), ("N", 9),
+                                       ("cloud_shade", 10))):
         node = nuke.nodes.BlinkScript(name="Pass_" + key, xpos=120 * i - 300, ypos=-80)
         node.setInput(0, work_plate)
         node.setInput(1, work_depth)
@@ -950,7 +951,17 @@ def build():
     gaps_full["box_height"].setExpression("plate.height")
     gaps_full.setInput(0, gaps)
 
-    sources = {"gaps": gaps_full, "hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
+    # With EzCloudGen volumes there is no sky gobo to show: the view shows where the clouds shade
+    # the land instead, lit ground orange and shaded ground dark (sky black).
+    shade_view = nuke.nodes.Expression(name="CloudGapsVolumes", xpos=1050, ypos=-70)
+    shade_view.setInput(0, passes["cloud_shade"])
+    for i, tint in enumerate((1.0, 0.6, 0.15)):
+        shade_view["expr%d" % i].setValue("a > 0 ? 0.06 + r * %.2f * 0.8 : 0" % tint)
+    gaps_pick = nuke.nodes.Switch(name="CloudGapsPick", xpos=1050, ypos=-40)
+    gaps_pick.setInput(0, gaps_full)
+    gaps_pick.setInput(1, shade_view)
+    gaps_pick["which"].setExpression("parent.clouds_source == 3")
+    sources = {"gaps": gaps_pick, "hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
                "sun": passes["sun"], "sky": passes["sky"], "shadow": shadow, "fog": fog, "wisps": wisps,
                "surface": surface, "visibility": visibility, "P": passes["P"], "N": passes["N"]}
     view = nuke.nodes.Switch(name="ViewOutput", xpos=0, ypos=200)
