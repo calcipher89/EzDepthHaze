@@ -40,7 +40,7 @@ CLOUDS_LAYER = "atmos_clouds"
 # Plain Python, not the tool code, so it works on nodes saved with older tool code too.
 SYNC_CLOUDS_INPUT = (
     "def _ezhaze_sync_clouds(node):\n"
-    "    want = node['cloud_from'].value() == 'Clouds Input'\n"
+    "    want = node['cloud_from'].value() in ('Clouds Input', 'EzCloudGen Volumes')\n"
     "    if not want and node.input(3) is not None:\n"
     "        node.setInput(3, None)\n"
     "    with node:\n"
@@ -122,9 +122,17 @@ def _link_atmos_knobs(group):
     # atmos_clouds layer (when picked and the atmos node outputs a lat-long), else noise.
     group["clouds_source"].setExpression(
         "[python -execlocal {%sm = int(nuke.thisNode()['cloud_from'].getValue())\n"
-        "ret = 1 if m == 2 and nuke.thisNode().input(3) is not None else (2 if m == 1 and a is not None "
+        "ret = 3 if m == 3 and nuke.thisNode().input(3) is not None else "
+        "1 if m == 2 and nuke.thisNode().input(3) is not None else (2 if m == 1 and a is not None "
         "and 'atmos_clouds.red' in a.channels() and not (a.knob('output_mapping') and "
         "int(a['output_mapping'].getValue()) != 0) else 0)}]" % _FIND_ATMOS)
+    find_gen = ("e = nuke.thisNode().input(3)\n"
+                "while e is not None and not e.knob(\x27sun_map_out\x27):\n"
+                "    e = e.input(0) if e.inputs() else None\n")
+    group["gen_map_size"].setExpression("[python -execlocal {%sret = e[\x27sun_map_size\x27].value() if e is not None "
+                                        "and e.knob(\x27sun_map_size\x27) else 10000}]" % find_gen)
+    group["gen_ground"].setExpression("[python -execlocal {%sret = e[\x27ground_height\x27].value() * "
+                                      "e[\x27scene_scale\x27].value() if e is not None else 0}]" % find_gen)
     for name, source, size in ATMOS_KNOBS:
         for i in range(size):
             pick = ", %d" % i if size > 1 else ""
@@ -560,19 +568,30 @@ def _add_knobs(group, depth_pick, env_pick):
                  "makes longer beams.", 3000.0))
     add(*_double("cloud_size", "gap size (m)", 50, 20000, "Size of the gaps and the cloud between them.", 1500.0))
     add(*_double("cloud_softness", "gap softness", 0.01, 1, "How soft the edges of the gaps are.", 0.15))
-    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Sky (from atmos)", "Clouds Input"])
+    cloud_from = nuke.Enumeration_Knob("cloud_from", "gaps from", ["Noise", "Sky (from atmos)", "Clouds Input",
+                                                                 "EzCloudGen Volumes"])
     cloud_from.setTooltip("Noise: made-up gaps of gap size. Sky (from atmos): the clouds in the HDRI the atmos "
                           "node is lit by, already turned with its skydome, work as a gobo: blue sky lets the sun "
                           "through, cloud doesn't, so the beams line up with the gaps you see. Needs the atmos "
                           "node on output as Lat-long. Clouds Input: the same from a sky (or keyed matte) you plug "
                           "into the clouds input, which appears on the node while this is picked. Cloud cover is "
                           "then how blue a gap must be; cloud height is how high those clouds are. Falls back to "
-                          "Noise when the sky isn't there.")
+                          "Noise when the sky isn't there. EzCloudGen Volumes: plug an EzCloudGen (with 'sun shadow layer' and "
+                          "'breakout layers' on) into the clouds input, and the haze and terrain are shaded by "
+                          "the real cloud volumes along each sun ray, the way EzCloudShafts casts them, so the "
+                          "beams match the clouds at every distance. Cloud cover, height, size and softness "
+                          "are not used then; use the same sun in both nodes.")
     add(cloud_from)
-    # Where the cloud gaps read from: 0 noise, 1 the clouds input, 2 the atmos node's clouds layer.
+    # Where the cloud gaps read from: 0 noise, 1 the clouds input, 2 the atmos node's clouds layer,
+    # 3 the cloud_sunmap layer of an EzCloudGen in the clouds input.
     source = nuke.Int_Knob("clouds_source", "clouds source")
     source.setFlag(nuke.INVISIBLE)
     add(source)
+    # The EzCloudGen in the clouds input: its sun map reach and its ground height, in metres.
+    for name in ("gen_map_size", "gen_ground"):
+        gk = nuke.Double_Knob(name, name)
+        gk.setFlag(nuke.INVISIBLE)
+        add(gk)
     cloud_key = nuke.Enumeration_Knob("cloud_key", "gap key", ["Blue Sky", "Alpha"])
     cloud_key.setTooltip("What in the clouds input counts as a gap. Blue Sky: keyed from the colours (blue sky "
                          "and the sun). Alpha: a matte you keyed yourself in the clouds input's alpha, 1 where "
@@ -686,7 +705,9 @@ def _link_haze(node, output):
     for name in ("cloud_cover", "cloud_height", "cloud_size", "cloud_softness", "cloud_breakup",
                  "cloud_breakup_size"):
         _link(node, name, "parent." + name)
-    _link(node, "cloud_from_map", "parent.clouds_source != 0")
+    _link(node, "cloud_from_map", "parent.clouds_source == 3 ? 2 : parent.clouds_source != 0")
+    _link(node, "sun_map_size", "parent.gen_map_size")
+    _link(node, "sun_map_ground", "parent.gen_ground")
     _link(node, "cloud_key_alpha", "parent.cloud_key==1")
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
@@ -700,6 +721,7 @@ def build():
     for layer in LAYERS + ATMOS_LAYERS:
         nuke.Layer(layer, ["%s.red" % layer, "%s.green" % layer, "%s.blue" % layer])
     nuke.Layer(CLOUDS_LAYER, ["%s.%s" % (CLOUDS_LAYER, c) for c in ("red", "green", "blue", "alpha")])
+    nuke.Layer("cloud_sunmap", ["cloud_sunmap.red", "cloud_sunmap.green", "cloud_sunmap.blue"])
 
     group = nuke.nodes.Group(name="EzDepthHaze1")
     group["tile_color"].setValue(0x6a8fa5ff)
@@ -720,6 +742,11 @@ def build():
     clouds.setInput(0, no_clouds)
     clouds.setInput(1, clouds_in)
     clouds.setInput(2, atmos_clouds)
+    # EzCloudGen's cloud_sunmap layer, for 'gaps from' EzCloudGen Volumes.
+    gen_map = nuke.nodes.Shuffle2(name="CloudSunMapPick", xpos=1200, ypos=-250)
+    gen_map.setInput(0, clouds_in)
+    gen_map["in1"].setValue("cloud_sunmap")
+    clouds.setInput(3, gen_map)
     clouds["which"].setExpression("parent.clouds_source")
 
     # The depth goes to red of its own stream; the haze colour lat-long to rgb of another.
