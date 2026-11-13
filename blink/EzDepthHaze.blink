@@ -35,7 +35,8 @@
 //         5 = sunlit in-scatter without shadows, 6 = masks (r = fog share of the
 //         in-scatter, g = wisps: the noise's density change, weighted like the in-scatter,
 //         b = surface sun visibility), 7 = surface sunlight, 8 = world position (P),
-//         9 = surface normal (N)
+//         9 = surface normal (N), 10 = the clouds' shade on the surface alone (1 lit, 0 under
+//         cloud; no terrain shadow), for the Cloud Gaps view with EzCloudGen volumes
 //
 // cloudFromMap 2: `cloudMap` is EzCloudGen's cloud_sunmap layer: for each ground point around
 // the camera (sunMapSize sets its reach), the clouds' optical depth along the sun ray in red,
@@ -548,6 +549,11 @@ local:
       }
       if (output == 8) {
         dst() = float4(surfacePoint.x, surfacePoint.y, surfacePoint.z, 1.0f);
+        return;
+      }
+      if (output == 10) {
+        float g = cloudGap(surfacePoint, sunWorld);
+        dst() = float4(g, g, g, 1.0f);
         return;
       }
       float3 pr = surfacePoint;
