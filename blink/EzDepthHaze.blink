@@ -36,6 +36,12 @@
 //         in-scatter, g = wisps: the noise's density change, weighted like the in-scatter,
 //         b = surface sun visibility), 7 = surface sunlight, 8 = world position (P),
 //         9 = surface normal (N)
+//
+// cloudFromMap 2: `cloudMap` is EzCloudGen's cloud_sunmap layer: for each ground point around
+// the camera (sunMapSize sets its reach), the clouds' optical depth along the sun ray in red,
+// and that times their mean altitude (km) and mean squared altitude in green and blue. A point
+// is then shaded by the part of that cloud above its own altitude, so beams and shadows come
+// from the real cloud volumes, at every distance. sunMapGround is EzCloudGen's ground (metres).
 
 kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
 {
@@ -94,6 +100,8 @@ param:
   float cloudSoftness;
   int cloudFromMap;
   int cloudKeyAlpha;
+  float sunMapSize;
+  float sunMapGround;
   float cloudBreakup;
   float cloudBreakupSize;
   float noiseTime;
@@ -169,6 +177,8 @@ local:
     defineParam(cloudSoftness, "cloud_softness", 0.15f);
     defineParam(cloudFromMap, "cloud_from_map", 0);
     defineParam(cloudKeyAlpha, "cloud_key_alpha", 0);
+    defineParam(sunMapSize, "sun_map_size", 10000.0f);
+    defineParam(sunMapGround, "sun_map_ground", 0.0f);
     defineParam(cloudBreakup, "cloud_breakup", 0.0f);
     defineParam(cloudBreakupSize, "cloud_breakup_size", 300.0f);
     defineParam(noiseTime, "noise_time", 0.0f);
@@ -314,6 +324,27 @@ local:
   // layer is where the camera sees those clouds, so the beams line up with the sky's gaps.
   float cloudGap(float3 p, float3 sun)
   {
+    if (cloudFromMap == 2) {
+      // EzCloudGen's sun map: the cloud really above p on its sun ray.
+      if (sun.y <= 0.01f)
+        return 1.0f;
+      float3 o = cameraOrigin();
+      float qy = p.y - sunMapGround;
+      float gx = p.x - o.x - sun.x / sun.y * qy;
+      float gz = p.z - o.z - sun.z / sun.y * qy;
+      float k = 1.0f / (sqrt(gx * gx + gz * gz) + sunMapSize);
+      float w = cloudMap.bounds.width();
+      float h = cloudMap.bounds.height();
+      float4 m = bilinear(cloudMap, cloudMap.bounds.x1 + (gx * k * 0.5f + 0.5f) * w - 0.5f,
+                          cloudMap.bounds.y1 + (gz * k * 0.5f + 0.5f) * h - 0.5f);
+      float tau = m.x;
+      if (tau < 1e-4f)
+        return 1.0f;
+      float mean = m.y / tau;
+      float hw = sqrt(3.0f * max(m.z / tau - mean * mean, 0.0f)) + 0.02f;
+      float f = clamp((qy * 0.001f - (mean - hw)) / (2.0f * hw), 0.0f, 1.0f);
+      return exp(-tau * (1.0f - f));
+    }
     if (cloudCover <= 0.0f || p.y >= cloudHeight)
       return 1.0f;
     if (sun.y <= 0.01f)
@@ -566,7 +597,8 @@ local:
     sunFar = float3(max(sunFar.x, 0.0f), max(sunFar.y, 0.0f), max(sunFar.z, 0.0f));
 
     bool shadows = shadowStrength > 0.0f && (output == 3);
-    bool analytic = volumetric == 0 && useFar == 0 && !shadows;
+    // Cloud volumes shade the air along the ray, so they need the march too.
+    bool analytic = volumetric == 0 && useFar == 0 && !shadows && cloudFromMap != 2;
 
     float3 transmittance = float3(1.0f);
     float3 sunIn = float3(0.0f);

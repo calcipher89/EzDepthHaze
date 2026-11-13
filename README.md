@@ -271,6 +271,15 @@ the shot.
 
 The gaps drift with *wind*.
 
+**gaps from: EzCloudGen Volumes** uses real clouds instead of a layer. Plug an EzCloudGen (with
+*sun shadow layer* and *breakout layers* on) into the clouds input: its `cloud_sunmap` layer holds
+the clouds' optical depth towards the sun from every ground point around the camera, and each
+point in the haze or on the ground is shaded by the cloud really above it on its sun ray. Tall
+clouds and clouds outside the frame cast as they should, the beams line up with the clouds the
+camera sees, and they match EzCloudShafts, which reads the same layer. Cloud cover, height, gap
+size and softness are not used; give both nodes the same sun. The ray is always stepped in this
+mode; Volumetric with quality Normal or High keeps the beams free of grain.
+
 ## Sun, shadows and surface light
 
 The haze light is split in two: the part lit by the sun (`atmos_haze_sun`) and the part lit
