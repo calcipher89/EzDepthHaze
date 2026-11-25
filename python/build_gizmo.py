@@ -188,7 +188,8 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "noise_wind", "sky_threshold", "sky_distance",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften",
+                         "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
                          "surface_add", "surface_strength", "silhouette", "haze_color_gain",
@@ -534,6 +535,16 @@ def _add_knobs(group, depth_pick, env_pick):
                  "it is: this many metres of extra softness per kilometre of distance. Seen edge-on far away a "
                  "crisp top reads as a hard, saw-toothed line along the horizon; real fog tops thin out over "
                  "hundreds of metres. 0: the same softness everywhere (as before).", 0.0))
+    add(*_double("fog_brightness", "fog brightness", 0, 10, "Multiplies the light the fog scatters (not the haze's). "
+                 "With it, 'fog color' or 'fog forward glow' set, the fog is lit by the light at the camera, not dimmed "
+                 "and reddened with distance by 'match horizon', so a far fog band can glow paler than the ranges "
+                 "in front of it. 1: as before.", 1.0))
+    fog_color = nuke.Color_Knob("fog_color", "fog color")
+    fog_color.setTooltip("Tints the light the fog scatters (an artistic control). White: as before.")
+    add(fog_color, [1.0, 1.0, 1.0])
+    add(*_double("fog_glow", "fog forward glow", 0, 4, "Fog droplets scatter strongly forwards: towards the sun the "
+                 "fog's sunlit light gains a forward peak this strong (Henyey-Greenstein, g 0.8), so a band near the "
+                 "sun blazes warm. 0: as before.", 0.0))
     add(*_double("fog_start_fade", "fog start fade (km)", 0, 100, "How far the fog takes to build up beyond 'fog "
                  "start'. Longer is softer.", 5.0))
     add(*_double("noise_amount", "noise amount", 0, 1, "How much world-space noise breaks up the fog.", 0.0))
@@ -730,6 +741,12 @@ def _link_haze(node, output):
     _link(node, "fog_start", "parent.fog_start * 1000")
     _link(node, "fog_start_fade", "parent.fog_start_fade * 1000")
     _link(node, "fog_soften", "parent.fog_soften / 1000")
+    _link(node, "fog_light", "parent.fog_brightness != 1 || parent.fog_color.r != 1 || parent.fog_color.g != 1 || "
+                             "parent.fog_color.b != 1 || parent.fog_glow != 0")
+    _link(node, "fog_brightness", "parent.fog_brightness")
+    _link(node, "fog_glow", "parent.fog_glow")
+    for i, c in enumerate("rgb"):
+        _link(node, "fog_color", "parent.fog_color.%s" % c, i)
     _link(node, "noise_amount", "parent.noise_amount")
     _link(node, "noise_on_haze", "parent.noise_on_haze")
     _link(node, "noise_size", "parent.noise_size")

@@ -252,6 +252,9 @@ speed.
 | fog start (km) | 0 (off) | Distance from the camera where the fog begins: near valleys stay clear and the fog lies as a thin band along the far horizon. Counts from the camera, not from *haze start* |
 | fog start fade (km) | 5 | How far the fog takes to build up beyond *fog start* |
 | fog top soften (m/km) | 0 (off) | Extra softness of the fog's top per kilometre of distance, so far fog tops feather instead of showing a hard saw-toothed line |
+| fog brightness | 1 | Multiplies the light the fog scatters. With it, *fog color* or *fog forward glow* set, the fog takes the camera's light, not the light dimmed and reddened far away by *match horizon*, so a far band can glow paler than the ranges in front |
+| fog color | white | Tints the light the fog scatters |
+| fog forward glow | 0 (off) | Forward peak (Henyey-Greenstein g 0.8) on the fog's sunlit light: a fog band near the sun blazes warm |
 | noise amount | 0 | How much the noise breaks up the fog |
 | noise on haze | 0.3 | How much of the noise applies to the thin haze as well |
 | noise size (m) | 2000 | Size of the largest wisps and banks |

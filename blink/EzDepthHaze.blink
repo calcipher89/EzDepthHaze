@@ -97,6 +97,10 @@ param:
   float fogStart;
   float fogStartFade;
   float fogSoften;
+  int fogLight;
+  float fogBrightness;
+  float3 fogColor;
+  float fogGlow;
   float noiseAmount;
   float noiseOnHaze;
   float noiseSize;
@@ -182,6 +186,10 @@ local:
     defineParam(fogStart, "fog_start", 0.0f);
     defineParam(fogStartFade, "fog_start_fade", 0.0f);
     defineParam(fogSoften, "fog_soften", 0.0f);
+    defineParam(fogLight, "fog_light", 0);
+    defineParam(fogBrightness, "fog_brightness", 1.0f);
+    defineParam(fogColor, "fog_color", float3(1.0f, 1.0f, 1.0f));
+    defineParam(fogGlow, "fog_glow", 0.0f);
     defineParam(noiseAmount, "noise_amount", 0.0f);
     defineParam(noiseOnHaze, "noise_on_haze", 0.3f);
     defineParam(noiseSize, "noise_size", 2000.0f);
@@ -726,6 +734,15 @@ local:
       if (cloudCover > 0.0f && cloudBreakup > 0.0f)
         fogStep = max(min(fogStep, 0.5f * cloudBreakupSize), 5.0f);
       float subJitter = jitterAt(pos, 41.0f);
+      // Fog light (fogLight on when 'fog brightness', 'fog color' or 'fog forward glow' is set):
+      // the fog's share of each step is lit by the camera's sun and sky light (not the match-horizon
+      // blend, which dims and reddens it far away), times the fog colour and brightness, and its
+      // sunlit part gains a forward peak towards the sun (droplets scatter strongly forward:
+      // Henyey-Greenstein g 0.8, relative to an even spread).
+      float3 fogK = fogColor * fogBrightness;
+      float fogMu = dot(dir, sunWorld);
+      float fogHg = 0.36f / pow(max(1.64f - 1.6f * fogMu, 1e-4f), 1.5f);
+      float fogFwd = 1.0f + fogGlow * max(fogHg - 1.0f, 0.0f);
       for (int i = 0; i <= steps; i++) {
         float tEnd = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
         if (tEnd <= tPrev)
@@ -759,6 +776,10 @@ local:
         float w = useFar != 0 ? 1.0f - exp(-tMid / matchDistance) : 0.0f;
         float3 sunL = sunNear + (sunFar - sunNear) * w;
         float3 skyL = skyNear + (skyFar - skyNear) * w;
+        if (fogLight != 0 && fogPart > 0.0f) {
+          sunL = sunL * (1.0f - fogPart) + sunNear * fogK * (fogFwd * fogPart);
+          skyL = skyL * (1.0f - fogPart) + skyNear * fogK * fogPart;
+        }
         if (shadows && q == 0 && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
           vis = sunVisibility(p, origin, sun, shadowSamples, sj);
         float lit = (vis + (1.0f - vis) * (1.0f - shadowStrength)) * cloudGap(p, sun);
