@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -203,7 +203,7 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase", "fog_far_light", "fog_far_distance", "fog_far_brightness",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
@@ -582,6 +582,17 @@ def _add_knobs(group, depth_pick, env_pick):
     fog_color = nuke.Color_Knob("fog_color", "fog color")
     fog_color.setTooltip("Tints the light the fog scatters (an artistic control). White: as before.")
     add(fog_color, [1.0, 1.0, 1.0])
+    ffl = nuke.Enumeration_Knob("fog_far_light", "fog far light", ["Off", "Plate Sky"])
+    ffl.setTooltip("Off: the fog has one light at every distance (as before). Plate Sky: far away the fog's light "
+                   "hands over to the sky the plate shows at the skyline above each pixel (times 'fog color' and "
+                   "'fog far brightness'), over 'fog far distance', so near fog keeps the sun's light and shading "
+                   "while far fog and the band at the horizon melt into the sky instead of showing the layer's "
+                   "level top as a darker strip.")
+    add(ffl)
+    add(*_double("fog_far_distance", "fog far distance (km)", 1, 200, "Fog far light: distance over which the fog's "
+                 "light hands over to the plate's sky (about two thirds of the way there at this distance).", 40.0))
+    add(*_double("fog_far_brightness", "fog far brightness", 0, 4, "Fog far light: the far fog's brightness against "
+                 "the plate's sky (1 the same; a little under 1 sits it just darker than the sky).", 1.0))
     fph = nuke.Enumeration_Knob("fog_phase", "fog phase", ["Haze", "Own"])
     fph.setTooltip("How the fog's sunlight depends on the view angle. Haze: the haze's (as before): toward the "
                    "sun the fog takes the haze's bright forward peak, so a long look through fog toward a low "
@@ -796,9 +807,12 @@ def _link_haze(node, output):
     _link(node, "fog_horizon", "parent.fog_horizon")
     _link(node, "fog_light", "parent.fog_brightness != 1 || parent.fog_color.r != 1 || parent.fog_color.g != 1 || "
                              "parent.fog_color.b != 1 || parent.fog_glow != 0 || parent.fog_light_from != 0 || "
-                             "parent.fog_phase != 0")
+                             "parent.fog_phase != 0 || parent.fog_far_light != 0")
     _link(node, "fog_from_sky", "parent.fog_light_from")
     _link(node, "fog_phase", "parent.fog_phase")
+    _link(node, "fog_far", "parent.fog_far_light")
+    _link(node, "fog_far_distance", "parent.fog_far_distance * 1000")
+    _link(node, "fog_far_brightness", "parent.fog_far_brightness")
     _link(node, "fog_phase_g", "clamp(1 - 0.24 * (parent.inherit_atmos && parent.atm_found ? parent.atm_haze_glow_size : 1), 0, 0.99)")
     _link(node, "fog_brightness", "parent.fog_brightness")
     _link(node, "fog_glow", "parent.fog_glow")

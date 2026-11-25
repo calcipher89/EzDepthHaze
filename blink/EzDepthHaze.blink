@@ -103,6 +103,9 @@ param:
   int fogHorizon;
   int fogFromSky;
   int fogPhase;
+  int fogFar;
+  float fogFarDistance;
+  float fogFarBrightness;
   float fogPhaseG;
   int fogLight;
   float fogBrightness;
@@ -199,6 +202,9 @@ local:
     defineParam(fogHorizon, "fog_horizon", 0);
     defineParam(fogFromSky, "fog_from_sky", 0);
     defineParam(fogPhase, "fog_phase", 0);
+    defineParam(fogFar, "fog_far", 0);
+    defineParam(fogFarDistance, "fog_far_distance", 40000.0f);
+    defineParam(fogFarBrightness, "fog_far_brightness", 1.0f);
     defineParam(fogPhaseG, "fog_phase_g", 0.76f);
     defineParam(fogLight, "fog_light", 0);
     defineParam(fogBrightness, "fog_brightness", 1.0f);
@@ -771,7 +777,7 @@ local:
     // the skyline above this pixel, so distant ranges fade into the sky behind them even when the
     // sky plate and the atmos input were set up differently.
     float3 plateSky;
-    bool havePlateSky = (useFar != 0 && matchPlate != 0) || fogFromSky != 0 ? plateHorizon(pos, plateSky) : false;
+    bool havePlateSky = (useFar != 0 && matchPlate != 0) || fogFromSky != 0 || fogFar != 0 ? plateHorizon(pos, plateSky) : false;
     if (useFar != 0 && matchPlate != 0 && havePlateSky)
       sunFar = plateSky - skyFar;
     // Fog light from the plate sky: thick fog takes the colour of the sky the plate shows at the
@@ -779,6 +785,12 @@ local:
     // from the sky it melts into. The sky already holds the sun's forward glow.
     bool fogSky = fogFromSky != 0 && havePlateSky;
     float3 fogSkyL = fogSky ? plateSky * fogColor * fogBrightness : float3(0.0f);
+    // Fog far light Plate Sky: far away the fog's own light (above) hands over to the plate's sky at
+    // the skyline above this pixel (times fog color and 'fog far brightness'), over 'fog far
+    // distance': near fog keeps the sun's light and shading, far fog and the band at the horizon melt
+    // into the sky behind them instead of showing the layer's level top as a darker strip.
+    bool fogFarOn = fogFar != 0 && havePlateSky && !fogSky;
+    float3 fogFarL = fogFarOn ? plateSky * fogColor * fogFarBrightness : float3(0.0f);
     sunFar = float3(max(sunFar.x, 0.0f), max(sunFar.y, 0.0f), max(sunFar.z, 0.0f));
 
     bool shadows = shadowStrength > 0.0f && (output == 3);
@@ -876,8 +888,9 @@ local:
             sunL = sunL * (1.0f - fogPart);
             skyL = skyL * (1.0f - fogPart) + fogSkyL * fogPart;
           } else {
-            sunL = sunL * (1.0f - fogPart) + fogSunN * fogK * (fogFwd * fogPart);
-            skyL = skyL * (1.0f - fogPart) + skyNear * fogK * fogPart;
+            float wf = fogFarOn ? 1.0f - exp(-tMid / max(fogFarDistance, 1.0f)) : 0.0f;
+            sunL = sunL * (1.0f - fogPart) + fogSunN * fogK * (fogFwd * fogPart * (1.0f - wf));
+            skyL = skyL * (1.0f - fogPart) + (skyNear * fogK * (1.0f - wf) + fogFarL * wf) * fogPart;
           }
         }
         if (shadows && q == 0 && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
