@@ -100,6 +100,7 @@ param:
   float fogStart;
   float fogStartFade;
   float fogSoften;
+  int fogHorizon;
   int fogLight;
   float fogBrightness;
   float3 fogColor;
@@ -192,6 +193,7 @@ local:
     defineParam(fogStart, "fog_start", 0.0f);
     defineParam(fogStartFade, "fog_start_fade", 0.0f);
     defineParam(fogSoften, "fog_soften", 0.0f);
+    defineParam(fogHorizon, "fog_horizon", 0);
     defineParam(fogLight, "fog_light", 0);
     defineParam(fogBrightness, "fog_brightness", 1.0f);
     defineParam(fogColor, "fog_color", float3(1.0f, 1.0f, 1.0f));
@@ -457,8 +459,17 @@ local:
   // The fog's top, soft over fogSoftness, plus fogSoften metres per metre of distance t: seen
   // edge-on far away, a crisp top reads as a hard, saw-toothed line; real fog tops undulate and
   // thin out over much more than a near look shows.
+  // With 'fog to the horizon' the fog lies on a curved earth (radius 7/6 of the earth's, for
+  // refraction, as terrain renderers use): t metres out the ground has dropped t^2 / 2R, so a point
+  // of the ray sits that much higher above the fog.
+  float curveLift(float t)
+  {
+    return fogHorizon != 0 ? t * t / (2.0f * 6371000.0f * 7.0f / 6.0f) : 0.0f;
+  }
+
   float fogProfile(float y, float t)
   {
+    y += curveLift(t);
     float soft = fogSoftness + fogSoften * t;
     float edge = clamp((y - fogTop) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
     return fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
@@ -712,6 +723,35 @@ local:
       dist = min(dist, maxDistance);
     float s = min(hazeStart, dist);
 
+    // Fog to the horizon: a sky ray (Leave Sky) that dips into the curved fog layer before the
+    // fog's own horizon marches just that stretch, fog only (the sky already holds the air's
+    // haze), so the fog band runs on past the last land to a level horizon.
+    bool skyFog = false;
+    if (sky && hazeSky == 0 && fogHorizon != 0 && volumetric != 0 && fogDensity > 0.0f) {
+      float a = 1.0f / (2.0f * 6371000.0f * 7.0f / 6.0f);
+      float ceil0 = fogTop + 0.5f * max(fogSoftness, 1.0f);
+      for (int it = 0; it < 2; it++) {
+        float c = origin.y - ceil0;
+        float disc = dir.y * dir.y - 4.0f * a * c;
+        if (disc <= 0.0f || (c > 0.0f && dir.y >= 0.0f))
+          break;
+        float sq = sqrt(disc);
+        float tIn = c > 0.0f ? (-dir.y - sq) / (2.0f * a) : 0.0f;
+        float tOut = min((-dir.y + sq) / (2.0f * a), 600000.0f);
+        if (maxDistance > 0.0f)
+          tOut = min(tOut, maxDistance);
+        skyFog = tOut > tIn;
+        s = tIn;
+        dist = tOut;
+        // The top softens with distance: widen the layer to the ceiling at the far end and redo.
+        ceil0 = fogTop + 0.5f * max(fogSoftness + fogSoften * tOut, 1.0f);
+      }
+      if (!skyFog) {
+        s = 0.0f;
+        dist = 0.0f;
+      }
+    }
+
     // Haze light: the sunlit and sky-lit parts, and the same far away, where they take on
     // the atmosphere's own horizon sky.
     float3 sunNear = (useEnv != 0 ? sunLookup(dir, float2(u, v)) : hazeFlatSun) * (hazeColorGain * sunScatter);
@@ -760,6 +800,8 @@ local:
       // fog into sub-steps about half the fog's softness long (up to 8), so beams crossing it
       // stay smooth instead of aliasing into a comb.
       float fogCeiling = fogTop + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
+      // The curved earth lifts every point of the ray above the fog (curveLift >= 0), so the
+      // flat heights below are a safe lower bound for the sub-step test.
       float fogStep = max(0.5f * fogSoftness, 10.0f);
       // Breakup is finer than the fog: step at half its size too, or it shows as steps.
       if (cloudCover > 0.0f && cloudBreakup > 0.0f)
@@ -794,7 +836,7 @@ local:
         float n = 1.0f;
         if (volumetric != 0) {
           n = noiseFactor(p);
-          float3 haze = hazeAt(p.y - origin.y);
+          float3 haze = skyFog ? float3(0.0f) : hazeAt(p.y - origin.y);
           float fog = fogProfile(p.y, tMid) * fogDistance(tMid);
           sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
           float total = luma(sigma);

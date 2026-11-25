@@ -6,7 +6,7 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
-Status: v1.5.0. New in 1.5: the fog's own light (**fog brightness**, **fog color**, **fog forward glow**) and a **height model** with separate air and aerosol layers (default Single, as before). New in 1.4: **fog top soften** feathers the fog's top more the further away it is, so a far fog band has no hard, saw-toothed upper edge (0: as before). New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+Status: v1.6.0. New in 1.6: **fog to the horizon** lays the fog on a curved earth and carries it past the last land into the lowest strip of sky, so a far fog band runs on to a level horizon (default off, as before). New in 1.5: the fog's own light (**fog brightness**, **fog color**, **fog forward glow**) and a **height model** with separate air and aerosol layers (default Single, as before). New in 1.4: **fog top soften** feathers the fog's top more the further away it is, so a far fog band has no hard, saw-toothed upper edge (0: as before). New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
 distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
 as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
 cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
@@ -255,6 +255,7 @@ speed.
 | fog start (km) | 0 (off) | Distance from the camera where the fog begins: near valleys stay clear and the fog lies as a thin band along the far horizon. Counts from the camera, not from *haze start* |
 | fog start fade (km) | 5 | How far the fog takes to build up beyond *fog start* |
 | fog top soften (m/km) | 0 (off) | Extra softness of the fog's top per kilometre of distance, so far fog tops feather instead of showing a hard saw-toothed line |
+| fog to the horizon | off | Curved-earth fog that runs on past the last land: sky pixels just above the skyline (Leave Sky) that dip into the fog before its own horizon get the fog (not the haze). Volumetric only |
 | fog brightness | 1 | Multiplies the light the fog scatters. With it, *fog color* or *fog forward glow* set, the fog takes the camera's light, not the light dimmed and reddened far away by *match horizon*, so a far band can glow paler than the ranges in front |
 | fog color | white | Tints the light the fog scatters |
 | fog forward glow | 0 (off) | Forward peak (Henyey-Greenstein g 0.8) on the fog's sunlit light: a fog band near the sun blazes warm |
