@@ -713,7 +713,7 @@ def easy_message(text):
 def build_breakout(n):
     """Rebuild the node's result from its layers next to it, laid out as a merge trunk:
 
-        plate (+ surface_sunlight) x haze_transmittance + haze_sun + haze_sky
+        plate (+ surface_sunlight + surface_skylight) x haze_transmittance + haze_sun + haze_sky
 
     A row of Dots runs right from the node's output with a Shuffle under each; every layer
     drops down to a Dot level with its Merge on the trunk below the plate, and comes in from
@@ -737,6 +737,8 @@ def build_breakout(n):
         layers = []
         if n["surface_add"].value():
             layers.append(("surface_sunlight", "plus"))
+        if n.knob("sky_tint") and n["sky_tint"].value() > 0:
+            layers.append(("surface_skylight", "plus"))
         layers += [("haze_transmittance", "multiply"), ("haze_sun", "plus"), ("haze_sky", "plus")]
 
         # The trunk: the plate, down the left column.

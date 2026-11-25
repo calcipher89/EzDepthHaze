@@ -6,6 +6,12 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
+Status: v1.2.0. New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
+as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
+cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
+fill back in the sky-lit haze's colour. Both are off by default: v1.0.0 scripts render the same.
+
 ## Guide
 
 [docs/EZ_Haze_Field_Guide.pdf](docs/EZ_Haze_Field_Guide.pdf) is an illustrated artist guide to EzDepthHaze and
@@ -242,6 +248,8 @@ speed.
 | fog density (1/km) | 0 | Thickness of the fog layer |
 | fog top (m) | 1000 | Altitude the fog fills up to |
 | fog softness (m) | 300 | How gradually the fog fades out around its top |
+| fog start (km) | 0 (off) | Distance from the camera where the fog begins: near valleys stay clear and the fog lies as a thin band along the far horizon. Counts from the camera, not from *haze start* |
+| fog start fade (km) | 5 | How far the fog takes to build up beyond *fog start* |
 | noise amount | 0 | How much the noise breaks up the fog |
 | noise on haze | 0.3 | How much of the noise applies to the thin haze as well |
 | noise size (m) | 2000 | Size of the largest wisps and banks |
@@ -305,6 +313,7 @@ leave it off for CG already lit by the same sun.
 | sky scatter | 1 | Brightness of the sky-lit haze (the haze in shadow) |
 | shadow strength | 1 | Sunlight lost where terrain blocks the sun; 1 is physical, 0 is off |
 | shadow fill | 0 | Puts back a tinted share of the lost sunlight (artistic) |
+| fill from | Sun | *Sun*: the fill is the lost sunlight itself (warm at sunset). *Sky*: the same brightness in the sky-lit haze's colour, so shadowed haze goes cool |
 | shadow distance (km) | 20 | How far towards the sun each point looks for blockers |
 | penumbra (deg) | 0.5 | Shadow softness; the sun is about 0.5 across |
 | occluder thickness (m) | 1e9 | How deep each surface is taken to be; lower it for thin objects |
@@ -313,13 +322,17 @@ leave it off for CG already lit by the same sun.
 | surface light strength | 1 | Multiplies the surface light |
 | sun light color | (1, 0.8, 0.6) | Colour and brightness of the sunlight on the terrain |
 | albedo from | Plate | The plate's colour, or a constant *albedo* |
+| shadow sky light | 0 (off) | Gives the plate's shadowed surfaces (behind terrain, or turned away from the sun: by `surface_sun_visibility` and the normals) the sky's light. Tint: 0.3-1; Add Sky Light: the plate's units decide, above 1 is fine |
+| mode | Tint | *Tint*: shifts the shadows' hue towards the sky colour and keeps their brightness (an already-lit plate: a photo, a beauty render). *Add Sky Light*: adds the sky's light times the albedo, more where a surface faces more of the sky (a plate without sky light; with a plate lit by the sun alone, set *albedo from* Constant, as its shadows are black) |
+| sky light from | Atmos | *Atmos*: the atmos input's sky-lit haze colour straight up (`atmos_haze_sky`); at sunset it is the sky's average, only slightly cool. *Color*: *sky light color* |
+| sky light color | (0.45, 0.6, 1) | The sky's light for *Color* (or with no atmos input) |
 
 ## Layers
 
 Every pass is written to its own layer, so the look can be rebuilt and graded:
 
 ```
-result = (plate + surface_sunlight, if added) * haze_transmittance + haze_sun + haze_sky
+result = (plate + surface_sunlight, if added, + surface_skylight) * haze_transmittance + haze_sun + haze_sky
 ```
 
 | Layer | Contents |
@@ -333,6 +346,7 @@ result = (plate + surface_sunlight, if added) * haze_transmittance + haze_sun + 
 | `haze_wisps` | How much the noise changed the density, signed, weighted like the in-scatter |
 | `surface_sunlight` | Sunlight falling on the terrain |
 | `surface_sun_visibility` | 1 where a surface sees the sun, 0 in shadow |
+| `surface_skylight` | What *shadow sky light* adds to the plate (0 when it is off) |
 | `P`, `N` | World position (metres) and normal, rebuilt from depth |
 
 ## Demo
