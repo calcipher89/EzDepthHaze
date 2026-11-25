@@ -102,6 +102,8 @@ param:
   float fogSoften;
   int fogHorizon;
   int fogFromSky;
+  int fogPhase;
+  float fogPhaseG;
   int fogLight;
   float fogBrightness;
   float3 fogColor;
@@ -196,6 +198,8 @@ local:
     defineParam(fogSoften, "fog_soften", 0.0f);
     defineParam(fogHorizon, "fog_horizon", 0);
     defineParam(fogFromSky, "fog_from_sky", 0);
+    defineParam(fogPhase, "fog_phase", 0);
+    defineParam(fogPhaseG, "fog_phase_g", 0.76f);
     defineParam(fogLight, "fog_light", 0);
     defineParam(fogBrightness, "fog_brightness", 1.0f);
     defineParam(fogColor, "fog_color", float3(1.0f, 1.0f, 1.0f));
@@ -824,6 +828,16 @@ local:
       float fogMu = dot(dir, sunWorld);
       float fogHg = 0.36f / pow(max(1.64f - 1.6f * fogMu, 1e-4f), 1.5f);
       float fogFwd = 1.0f + fogGlow * max(fogHg - 1.0f, 0.0f);
+      // Fog phase Own: the camera's sunlit haze colour in this direction carries the haze's forward
+      // (Mie) peak; thick fog scatters many times over, which flattens it, so take that peak back
+      // out (Henyey-Greenstein with the atmos's g, relative to an even spread, where it is above 1)
+      // and leave 'fog forward glow' as the fog's own peak. Haze: as before.
+      float3 fogSunN = sunNear;
+      if (fogPhase != 0) {
+        float g2 = fogPhaseG * fogPhaseG;
+        float hazePeak = (1.0f - g2) / pow(max(1.0f + g2 - 2.0f * fogPhaseG * fogMu, 1e-4f), 1.5f);
+        fogSunN = sunNear / max(hazePeak, 1.0f);
+      }
       for (int i = 0; i <= steps; i++) {
         float tEnd = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
         if (tEnd <= tPrev)
@@ -862,7 +876,7 @@ local:
             sunL = sunL * (1.0f - fogPart);
             skyL = skyL * (1.0f - fogPart) + fogSkyL * fogPart;
           } else {
-            sunL = sunL * (1.0f - fogPart) + sunNear * fogK * (fogFwd * fogPart);
+            sunL = sunL * (1.0f - fogPart) + fogSunN * fogK * (fogFwd * fogPart);
             skyL = skyL * (1.0f - fogPart) + skyNear * fogK * fogPart;
           }
         }
