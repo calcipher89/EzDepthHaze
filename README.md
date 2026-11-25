@@ -6,7 +6,7 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
-Status: v1.4.0. New in 1.4: **fog top soften** feathers the fog's top more the further away it is, so a far fog band has no hard, saw-toothed upper edge (0: as before). New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+Status: v1.5.0. New in 1.5: the fog's own light (**fog brightness**, **fog color**, **fog forward glow**) and a **height model** with separate air and aerosol layers (default Single, as before). New in 1.4: **fog top soften** feathers the fog's top more the further away it is, so a far fog band has no hard, saw-toothed upper edge (0: as before). New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
 distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
 as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
 cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
@@ -246,6 +246,9 @@ speed.
 | --- | --- | --- |
 | mode | Fast | Fast (exact, one step) or Volumetric (marched, for fog and noise) |
 | quality | Normal (48) | Samples per ray in Volumetric mode |
+| height model | Single | *Single*: one layer thinning with *haze height* (as before). *Air + Aerosol*: the clear air thins slowly (*air height*, ~8.5 km) and the aerosol haze fast (*haze height*, ~1.2 km), as in the atmosphere: far and high ground keeps the air's cool haze while the warm low haze stays in the valleys. Inherited from the atmos input |
+| air height (km) | 8.5 | Air + Aerosol: the air's scale height (the atmos's Rayleigh scale height when inheriting) |
+| air share | 0.5 | Air + Aerosol: the air's share of the haze density at camera height (Rayleigh over Rayleigh + Mie when inheriting) |
 | fog density (1/km) | 0 | Thickness of the fog layer |
 | fog top (m) | 1000 | Altitude the fog fills up to |
 | fog softness (m) | 300 | How gradually the fog fades out around its top |
