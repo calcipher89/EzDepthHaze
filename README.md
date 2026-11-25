@@ -6,7 +6,7 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
-Status: v1.3.0. New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+Status: v1.4.0. New in 1.4: **fog top soften** feathers the fog's top more the further away it is, so a far fog band has no hard, saw-toothed upper edge (0: as before). New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
 distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
 as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
 cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
@@ -251,6 +251,7 @@ speed.
 | fog softness (m) | 300 | How gradually the fog fades out around its top |
 | fog start (km) | 0 (off) | Distance from the camera where the fog begins: near valleys stay clear and the fog lies as a thin band along the far horizon. Counts from the camera, not from *haze start* |
 | fog start fade (km) | 5 | How far the fog takes to build up beyond *fog start* |
+| fog top soften (m/km) | 0 (off) | Extra softness of the fog's top per kilometre of distance, so far fog tops feather instead of showing a hard saw-toothed line |
 | noise amount | 0 | How much the noise breaks up the fog |
 | noise on haze | 0.3 | How much of the noise applies to the thin haze as well |
 | noise size (m) | 2000 | Size of the largest wisps and banks |

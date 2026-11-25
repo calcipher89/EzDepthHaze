@@ -96,6 +96,7 @@ param:
   float fogSoftness;
   float fogStart;
   float fogStartFade;
+  float fogSoften;
   float noiseAmount;
   float noiseOnHaze;
   float noiseSize;
@@ -180,6 +181,7 @@ local:
     defineParam(fogSoftness, "fog_softness", 300.0f);
     defineParam(fogStart, "fog_start", 0.0f);
     defineParam(fogStartFade, "fog_start_fade", 0.0f);
+    defineParam(fogSoften, "fog_soften", 0.0f);
     defineParam(noiseAmount, "noise_amount", 0.0f);
     defineParam(noiseOnHaze, "noise_on_haze", 0.3f);
     defineParam(noiseSize, "noise_size", 2000.0f);
@@ -438,9 +440,13 @@ local:
     return e * e * (3.0f - 2.0f * e);
   }
 
-  float fogProfile(float y)
+  // The fog's top, soft over fogSoftness, plus fogSoften metres per metre of distance t: seen
+  // edge-on far away, a crisp top reads as a hard, saw-toothed line; real fog tops undulate and
+  // thin out over much more than a near look shows.
+  float fogProfile(float y, float t)
   {
-    float edge = clamp((y - fogTop) / max(fogSoftness, 1.0f) + 0.5f, 0.0f, 1.0f);
+    float soft = fogSoftness + fogSoften * t;
+    float edge = clamp((y - fogTop) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
     return fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
   }
 
@@ -714,7 +720,7 @@ local:
       // Fog sits in a thin layer, and far steps are long: split a step that reaches into the
       // fog into sub-steps about half the fog's softness long (up to 8), so beams crossing it
       // stay smooth instead of aliasing into a comb.
-      float fogCeiling = fogTop + 0.5f * max(fogSoftness, 1.0f);
+      float fogCeiling = fogTop + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
       float fogStep = max(0.5f * fogSoftness, 10.0f);
       // Breakup is finer than the fog: step at half its size too, or it shows as steps.
       if (cloudCover > 0.0f && cloudBreakup > 0.0f)
@@ -741,7 +747,7 @@ local:
         if (volumetric != 0) {
           n = noiseFactor(p);
           float3 haze = hazeDensity * (hazeAmount * exp(-(p.y - origin.y) / hazeHeight));
-          float fog = fogProfile(p.y) * fogDistance(tMid);
+          float fog = fogProfile(p.y, tMid) * fogDistance(tMid);
           sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
           float total = luma(sigma);
           fogPart = total > 0.0f ? fog * n * (t - tPrev) / total : 0.0f;
