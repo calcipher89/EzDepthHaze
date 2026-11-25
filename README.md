@@ -6,7 +6,7 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
-Status: v1.2.0. New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+Status: v1.3.0. New in 1.3: **match to: Plate Sky** fades the far ranges into the sky the plate itself shows above the skyline, instead of the atmos input's horizon (default Atmos, as before). New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
 distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
 as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
 cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
@@ -77,6 +77,7 @@ channel of the plate and adds the layers listed under Layers below.
 | inherit from atmos | on | Take haze density, haze height, rotation and the sun from the EzAtmosScatter input. The sun is the one it uses, whether found in the HDRI (Auto), from its Axis or manual |
 | match horizon sky | on | Far haze takes the light of the atmos input's own sky, so distant terrain fades into the sky behind it |
 | match distance (km) | 20 | Distance over which the haze light changes from the camera's to the horizon sky's |
+| match to | Atmos | *Atmos*: the atmos input's horizon sky. *Plate Sky*: the sky the plate shows just above the skyline in each column, so far ranges fade into the sky actually behind them (a sky plate set up differently from the atmos input, a graded or photographed sky) |
 | atmos layer | atmos_haze_color | Layer of the atmos input to use (rgba for a plain lat-long) |
 | haze color | (0.6, 0.65, 0.75) | Flat haze colour |
 | haze brightness | 1 | Multiplies the haze colour |

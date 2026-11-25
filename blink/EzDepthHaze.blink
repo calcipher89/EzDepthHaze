@@ -54,7 +54,7 @@
 
 kernel EzDepthHaze : ImageComputationKernel<ePixelWise>
 {
-  Image<eRead, eAccessPoint, eEdgeClamped> plate;
+  Image<eRead, eAccessRandom, eEdgeClamped> plate;
   Image<eRead, eAccessRandom, eEdgeClamped> depth;
   Image<eRead, eAccessRandom, eEdgeClamped> envSun;
   Image<eRead, eAccessRandom, eEdgeClamped> envSky;
@@ -119,6 +119,7 @@ param:
   float noiseSeed;
   float3 sunDirection;
   int useFar;
+  int matchPlate;
   float matchDistance;
   float sunScatter;
   float skyScatter;
@@ -202,6 +203,7 @@ local:
     defineParam(noiseSeed, "noise_seed", 1.0f);
     defineParam(sunDirection, "sun_direction", float3(0.0f, 0.1f, -1.0f));
     defineParam(useFar, "use_far", 0);
+    defineParam(matchPlate, "match_plate", 0);
     defineParam(matchDistance, "match_distance", 20000.0f);
     defineParam(sunScatter, "sun_scatter", 1.0f);
     defineParam(skyScatter, "sky_scatter", 1.0f);
@@ -475,6 +477,32 @@ local:
   }
 
   // Distance in metres along the ray of plate pixel (x, y); 0 for sky.
+  // Match horizon to the plate's own sky: the sky the plate shows just above the skyline in
+  // this pixel's column (the first sky pixel above it, two rows up, averaged over five columns).
+  // False when the column has no sky above the pixel.
+  bool plateHorizon(int2 pos, float3 &c)
+  {
+    int top = plate.bounds.y2 - 1;
+    int y = pos.y;
+    for (int i = 0; i < 600; i++) {
+      if (y > top)
+        return false;
+      if (distanceAt(pos.x, y) <= 0.0f) {
+        int yy = min(y + 2, top);
+        float3 acc = float3(0.0f);
+        for (int dx = -2; dx <= 2; dx++) {
+          int xx = clamp(pos.x + dx, plate.bounds.x1, plate.bounds.x2 - 1);
+          float4 q = plate(xx, yy);
+          acc += float3(q.x, q.y, q.z);
+        }
+        c = acc / 5.0f;
+        return true;
+      }
+      y += 2;
+    }
+    return false;
+  }
+
   float distanceAt(int x, int y)
   {
     float raw = depth(x, y).x;
@@ -559,7 +587,7 @@ local:
 
   void process(int2 pos)
   {
-    float4 src = plate();
+    float4 src = plate(pos.x, pos.y);
     float u = (pos.x - plate.bounds.x1 + 0.5f) / plate.bounds.width();
     float v = (pos.y - plate.bounds.y1 + 0.5f) / plate.bounds.height();
     float planarScale;
@@ -648,6 +676,12 @@ local:
     // and redder; sky light is not, so the whole difference goes to the sunlit part.
     float3 skyFar = skyNear;
     float3 sunFar = (sunNear + skyNear) * k - skyNear;
+    // Match to the plate's sky: far away the haze takes the colour of the sky the plate shows at
+    // the skyline above this pixel, so distant ranges fade into the sky behind them even when the
+    // sky plate and the atmos input were set up differently.
+    float3 plateSky;
+    if (useFar != 0 && matchPlate != 0 && plateHorizon(pos, plateSky))
+      sunFar = plateSky - skyFar;
     sunFar = float3(max(sunFar.x, 0.0f), max(sunFar.y, 0.0f), max(sunFar.z, 0.0f));
 
     bool shadows = shadowStrength > 0.0f && (output == 3);

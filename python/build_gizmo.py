@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -483,6 +483,13 @@ def _add_knobs(group, depth_pick, env_pick):
     add(match, True)
     add(*_double("match_distance", "match distance (km)", 1, 200, "Distance over which the haze light "
                  "changes from the camera's to the horizon sky's.", 20.0))
+    match_to = nuke.Enumeration_Knob("match_to", "match to", ["Atmos", "Plate Sky"])
+    match_to.setTooltip("Atmos: the atmos input's own horizon sky (as before). Plate Sky: the sky the plate "
+                        "itself shows just above the skyline, in each column, so the far ranges fade into the "
+                        "sky behind them even when the sky plate and the atmos input differ (another atmos "
+                        "setup, a graded or photographed sky). Needs sky (depth 0) above the land in frame.")
+    match_to.clearFlag(nuke.STARTLINE)
+    add(match_to)
     env_layer = nuke.Link_Knob("atmos_layer", "atmos layer")
     env_layer.makeLink(env_pick.name(), "in1")
     env_layer.setTooltip("Layer of the atmos input to use: atmos_haze_color for EzAtmosScatter, rgba for a "
@@ -701,6 +708,7 @@ def _link_haze(node, output):
                               "and int(a['output_mapping'].getValue()) == 2 and a.input(3) is not None else 0}]"
           % _FIND_ATMOS.replace("nuke.thisNode()", "nuke.thisGroup()"))
     _link(node, "match_distance", "parent.match_distance * 1000")
+    _link(node, "match_plate", "parent.match_to")
     _link(node, "env_rotation", ATMOS % ("hdri_rotation", "hdri_rotation", "parent.env_rotation"))
     for i, c in enumerate("rgb"):
         _link(node, "haze_color", "parent.haze_color.%s" % c, i)
