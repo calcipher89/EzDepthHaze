@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -104,7 +104,7 @@ _FIND_ATMOS = ("a = nuke.thisNode().input(2)\n"
 # (found in the HDRI, from its Axis or manual), or its manual sun on older versions.
 ATMOS_KNOBS = [("atm_haze_density", "haze_density", 3), ("atm_haze_height", "haze_height", 1),
                ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_in_use|sun_direction", 3),
-               ("atm_rayleigh_scale_height", "rayleigh_scale_height", 1)]
+               ("atm_rayleigh_scale_height", "rayleigh_scale_height", 1), ("atm_haze_glow_size", "haze_glow_size", 1)]
 
 
 def _add_atmos_knobs(add):
@@ -203,7 +203,7 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
@@ -582,6 +582,14 @@ def _add_knobs(group, depth_pick, env_pick):
     fog_color = nuke.Color_Knob("fog_color", "fog color")
     fog_color.setTooltip("Tints the light the fog scatters (an artistic control). White: as before.")
     add(fog_color, [1.0, 1.0, 1.0])
+    fph = nuke.Enumeration_Knob("fog_phase", "fog phase", ["Haze", "Own"])
+    fph.setTooltip("How the fog's sunlight depends on the view angle. Haze: the haze's (as before): toward the "
+                   "sun the fog takes the haze's bright forward peak, so a long look through fog toward a low "
+                   "sun saturates to the sky's brightness. Own: that peak is taken back out (thick fog scatters "
+                   "many times, which flattens it), so fog toward the sun sits darker than the sky, as real "
+                   "valley fog does; 'fog forward glow' is then the fog's only forward peak. The haze's peak "
+                   "comes from the atmos's glow size when inheriting.")
+    add(fph)
     add(*_double("fog_glow", "fog forward glow", 0, 4, "Fog droplets scatter strongly forwards: towards the sun the "
                  "fog's sunlit light gains a forward peak this strong (Henyey-Greenstein, g 0.8), so a band near the "
                  "sun blazes warm. 0: as before.", 0.0))
@@ -787,8 +795,11 @@ def _link_haze(node, output):
     _link(node, "fog_soften", "parent.fog_soften / 1000")
     _link(node, "fog_horizon", "parent.fog_horizon")
     _link(node, "fog_light", "parent.fog_brightness != 1 || parent.fog_color.r != 1 || parent.fog_color.g != 1 || "
-                             "parent.fog_color.b != 1 || parent.fog_glow != 0 || parent.fog_light_from != 0")
+                             "parent.fog_color.b != 1 || parent.fog_glow != 0 || parent.fog_light_from != 0 || "
+                             "parent.fog_phase != 0")
     _link(node, "fog_from_sky", "parent.fog_light_from")
+    _link(node, "fog_phase", "parent.fog_phase")
+    _link(node, "fog_phase_g", "clamp(1 - 0.24 * (parent.inherit_atmos && parent.atm_found ? parent.atm_haze_glow_size : 1), 0, 0.99)")
     _link(node, "fog_brightness", "parent.fog_brightness")
     _link(node, "fog_glow", "parent.fog_glow")
     for i, c in enumerate("rgb"):
