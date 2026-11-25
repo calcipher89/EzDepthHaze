@@ -101,6 +101,7 @@ param:
   float fogStartFade;
   float fogSoften;
   int fogHorizon;
+  int fogFromSky;
   int fogLight;
   float fogBrightness;
   float3 fogColor;
@@ -194,6 +195,7 @@ local:
     defineParam(fogStartFade, "fog_start_fade", 0.0f);
     defineParam(fogSoften, "fog_soften", 0.0f);
     defineParam(fogHorizon, "fog_horizon", 0);
+    defineParam(fogFromSky, "fog_from_sky", 0);
     defineParam(fogLight, "fog_light", 0);
     defineParam(fogBrightness, "fog_brightness", 1.0f);
     defineParam(fogColor, "fog_color", float3(1.0f, 1.0f, 1.0f));
@@ -765,8 +767,14 @@ local:
     // the skyline above this pixel, so distant ranges fade into the sky behind them even when the
     // sky plate and the atmos input were set up differently.
     float3 plateSky;
-    if (useFar != 0 && matchPlate != 0 && plateHorizon(pos, plateSky))
+    bool havePlateSky = (useFar != 0 && matchPlate != 0) || fogFromSky != 0 ? plateHorizon(pos, plateSky) : false;
+    if (useFar != 0 && matchPlate != 0 && havePlateSky)
       sunFar = plateSky - skyFar;
+    // Fog light from the plate sky: thick fog takes the colour of the sky the plate shows at the
+    // skyline above this pixel (times fog color and brightness), so a far band can't differ in hue
+    // from the sky it melts into. The sky already holds the sun's forward glow.
+    bool fogSky = fogFromSky != 0 && havePlateSky;
+    float3 fogSkyL = fogSky ? plateSky * fogColor * fogBrightness : float3(0.0f);
     sunFar = float3(max(sunFar.x, 0.0f), max(sunFar.y, 0.0f), max(sunFar.z, 0.0f));
 
     bool shadows = shadowStrength > 0.0f && (output == 3);
@@ -850,8 +858,13 @@ local:
         float3 sunL = sunNear + (sunFar - sunNear) * w;
         float3 skyL = skyNear + (skyFar - skyNear) * w;
         if (fogLight != 0 && fogPart > 0.0f) {
-          sunL = sunL * (1.0f - fogPart) + sunNear * fogK * (fogFwd * fogPart);
-          skyL = skyL * (1.0f - fogPart) + skyNear * fogK * fogPart;
+          if (fogSky) {
+            sunL = sunL * (1.0f - fogPart);
+            skyL = skyL * (1.0f - fogPart) + fogSkyL * fogPart;
+          } else {
+            sunL = sunL * (1.0f - fogPart) + sunNear * fogK * (fogFwd * fogPart);
+            skyL = skyL * (1.0f - fogPart) + skyNear * fogK * fogPart;
+          }
         }
         if (shadows && q == 0 && (i % (shadowEvery > 1 ? shadowEvery : 1)) == 0)
           vis = sunVisibility(p, origin, sun, shadowSamples, sj);
