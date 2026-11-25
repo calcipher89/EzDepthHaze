@@ -22,12 +22,12 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
 LAYERS = ["haze_transmittance", "haze_inscatter", "haze_sun", "haze_sky", "haze_shadow", "haze_fog",
-          "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N"]
+          "haze_wisps", "surface_sunlight", "surface_sun_visibility", "P", "N", "surface_skylight"]
 # EzAtmosScatter layers the gizmo reads. They must exist when it is built and loaded, or the
 # Shuffles picking them fall back to rgba.
 ATMOS_LAYERS = ["atmos_haze_color", "atmos_haze_sun", "atmos_haze_sky", "atmos_inscatter", "atmos_transmittance"]
@@ -58,7 +58,8 @@ VIEW_OUTPUTS = [("Hazed Plate", "hazed"), ("Haze Transmittance", "transmittance"
                 ("Haze In-scatter", "inscatter"), ("Haze Sun", "sun"), ("Haze Sky", "sky"),
                 ("Haze Shadow", "shadow"), ("Haze Fog", "fog"), ("Haze Wisps", "wisps"),
                 ("Surface Sunlight", "surface"), ("Surface Sun Visibility", "visibility"),
-                ("World Position (P)", "P"), ("Normals (N)", "N"), ("Cloud Gaps (sky)", "gaps")]
+                ("World Position (P)", "P"), ("Normals (N)", "N"), ("Cloud Gaps (sky)", "gaps"),
+                ("Surface Sky Light", "skylight")]
 
 # Camera settings, read from hidden knobs on the group (cam_world_matrix, cam_focal, ...)
 # that find the camera through any Dots or NoOps in the camera input. The default after
@@ -548,6 +549,12 @@ def _add_knobs(group, depth_pick, env_pick):
     fill = nuke.Color_Knob("shadow_fill", "shadow fill")
     fill.setTooltip("Puts back a tinted share of the sunlight the shadowed haze lost. 0 is physical.")
     add(fill, [0.0, 0.0, 0.0])
+    fill_from = nuke.Enumeration_Knob("shadow_fill_from", "fill from", ["Sun", "Sky"])
+    fill_from.setTooltip("Sun: the fill is the lost sunlight itself (warm at sunset), as before. Sky: the same "
+                         "brightness, in the colour of the sky-lit haze, so shadowed haze goes cool, as the sky "
+                         "lights it.")
+    fill_from.clearFlag(nuke.STARTLINE)
+    add(fill_from)
     add(*_double("shadow_distance", "shadow distance (km)", 0.1, 100, "How far towards the sun each point looks "
                  "for terrain that blocks it.", 20.0))
     add(*_double("penumbra", "penumbra (deg)", 0, 5, "Softness of the shadow edges: the sun's apparent size is "
@@ -618,6 +625,29 @@ def _add_knobs(group, depth_pick, env_pick):
     add(albedo_from)
     albedo = nuke.Color_Knob("albedo", "albedo")
     add(albedo, [0.15, 0.15, 0.15])
+    add(*_double("sky_tint", "shadow sky light", 0, 4, "Gives the plate's shadowed surfaces the sky's light: "
+                 "where the sun doesn't reach a surface (behind terrain, or turned away from it, by the "
+                 "surface_sun_visibility layer and the normals), the plate is shifted towards the sky's colour. "
+                 "This is the cool blue of snow and rock in shade under a clear sky, which a plate lit by a "
+                 "warm sun (or an un-lit CG plate) lacks. 0: off (as before). Tint: 0.3-1. Add Sky Light: the "
+                 "plate's units set how much is needed; above 1 is fine.", 0.0))
+    sky_mode = nuke.Enumeration_Knob("sky_tint_mode", "mode", ["Tint", "Add Sky Light"])
+    sky_mode.setTooltip("Tint: shifts the shadows' hue towards the sky's colour and keeps their brightness (for a "
+                        "plate already lit, a photo or a beauty render). Add Sky Light: adds the sky's light "
+                        "times the surface's albedo (the plate's colour, or 'albedo' with albedo from Constant: use "
+                        "that for a plate lit by the sun alone, which is black in shadow); brighter where a "
+                        "surface faces more of the sky.")
+    sky_mode.clearFlag(nuke.STARTLINE)
+    add(sky_mode)
+    sky_from = nuke.Enumeration_Knob("sky_light_from", "sky light from", ["Atmos", "Color"])
+    sky_from.setTooltip("Atmos: the colour of the atmos input's sky-lit haze straight up (EzAtmosScatter's "
+                        "atmos_haze_sky): the sky's average, which at sunset includes the bright warm sky round the "
+                        "sun, so it is only slightly cool. Color: 'sky light color', for a bluer shade like a "
+                        "clear sky overhead. Falls back to the colour without an atmos.")
+    add(sky_from)
+    sky_color = nuke.Color_Knob("sky_light_color", "sky light color")
+    sky_color.setTooltip("The sky's light when 'sky light from' is Color (or there is no atmos input).")
+    add(sky_color, [0.45, 0.6, 1.0])
 
     for knob in k:
         group.addKnob(knob)
@@ -712,6 +742,11 @@ def _link_haze(node, output):
     _link(node, "shadow_samples", "parent.shadow_quality==0 ? 8 : parent.shadow_quality==1 ? 16 : 32")
     _link(node, "shadow_every", "parent.shadow_quality==0 ? 6 : parent.shadow_quality==1 ? 3 : 1")
     _link(node, "surface_strength", "parent.surface_strength")
+    _link(node, "shadow_fill_from_sky", "parent.shadow_fill_from")
+    _link(node, "sky_light_from_env", "parent.sky_light_from==0")
+    _link(node, "sky_light_add", "parent.sky_tint_mode")
+    for i, c in enumerate("rgb"):
+        _link(node, "sky_light_color", "parent.sky_light_color.%s" % c, i)
     _link(node, "albedo_from_plate", "parent.albedo_from==0")
     for i, c in enumerate("xyz"):
         _link(node, "sun_direction", ATMOS % ("sun_direction", "sun_direction.%s" % c, "parent.sun_direction.%s" % c), i)
@@ -852,7 +887,7 @@ def build():
     passes = {}
     for i, (key, output) in enumerate((("transmittance", 1), ("sun", 3), ("sky", 4), ("sun_free", 5),
                                        ("masks", 6), ("surface_raw", 7), ("P", 8), ("N", 9),
-                                       ("cloud_shade", 10))):
+                                       ("cloud_shade", 10), ("sky_light", 11))):
         node = nuke.nodes.BlinkScript(name="Pass_" + key, xpos=120 * i - 300, ypos=-80)
         node.setInput(0, work_plate)
         node.setInput(1, work_depth)
@@ -920,6 +955,30 @@ def build():
     surface_add["value"].setExpression("parent.surface_add")
     surface_add.setInput(0, surface)
     lit_plate = merge("PlatePlusSurface", "plus", surface_add, plate, 0, 60)
+    # Shadow sky light: plate * K * shade, shade = 1 - sun visibility x facing the sun (the
+    # kernel's output 11 gives K in rgb and the facing in alpha). Off (0) it is bypassed, so the
+    # result is exactly as before.
+    facing = mono("SkyFacing", passes["sky_light"], "alpha", 720, 0)
+    lit_share = merge("SkyLitShare", "multiply", facing, visibility, 720, 20)
+    shade = nuke.nodes.Expression(name="SkyShade", expr0="1-r", expr1="1-g", expr2="1-b", xpos=720, ypos=40)
+    shade.setInput(0, lit_share)
+    k_shade = merge("SkyKShade", "multiply", passes["sky_light"], shade, 720, 60)
+    sky_delta = merge("SkyDelta", "multiply", plate, k_shade, 720, 80)
+    # Add Sky Light with albedo from Constant: the kernel has the albedo in K already (a plate lit
+    # by the sun alone is black in shadow, so it can't be the albedo there).
+    sky_pick = nuke.nodes.Switch(name="SkyAlbedoPick", xpos=720, ypos=90)
+    sky_pick.setInput(0, sky_delta)
+    sky_pick.setInput(1, k_shade)
+    sky_pick["which"].setExpression("parent.sky_tint_mode==1 && parent.albedo_from==1")
+    sky_amount = nuke.nodes.Multiply(name="SkyAmount", channels="rgb", xpos=720, ypos=100)
+    sky_amount["value"].setExpression("parent.sky_tint")
+    sky_amount.setInput(0, sky_pick)
+    sky_plate = merge("PlatePlusSky", "plus", sky_amount, lit_plate, 120, 70)
+    sky_on = nuke.nodes.Switch(name="SkyLightOn", xpos=0, ypos=80)
+    sky_on.setInput(0, lit_plate)
+    sky_on.setInput(1, sky_plate)
+    sky_on["which"].setExpression("parent.sky_tint > 0")
+    lit_plate = sky_on
     dimmed = merge("PlateTimesT", "multiply", passes["transmittance"], lit_plate, 0, 100)
     hazed = merge("Hazed", "plus", inscatter, dimmed, 0, 140)
 
@@ -963,7 +1022,8 @@ def build():
     gaps_pick["which"].setExpression("parent.clouds_source == 3")
     sources = {"gaps": gaps_pick, "hazed": hazed, "transmittance": passes["transmittance"], "inscatter": inscatter,
                "sun": passes["sun"], "sky": passes["sky"], "shadow": shadow, "fog": fog, "wisps": wisps,
-               "surface": surface, "visibility": visibility, "P": passes["P"], "N": passes["N"]}
+               "surface": surface, "visibility": visibility, "P": passes["P"], "N": passes["N"],
+               "skylight": sky_amount}
     view = nuke.nodes.Switch(name="ViewOutput", xpos=0, ypos=200)
     for i, (_, key) in enumerate(VIEW_OUTPUTS):
         view.setInput(i, sources[key])
@@ -976,7 +1036,8 @@ def build():
     layer_sources = [("haze_transmittance", passes["transmittance"]), ("haze_inscatter", inscatter),
                      ("haze_sun", passes["sun"]), ("haze_sky", passes["sky"]), ("haze_shadow", shadow),
                      ("haze_fog", fog), ("haze_wisps", wisps), ("surface_sunlight", surface),
-                     ("surface_sun_visibility", visibility), ("P", passes["P"]), ("N", passes["N"])]
+                     ("surface_sun_visibility", visibility), ("P", passes["P"]), ("N", passes["N"]),
+                     ("surface_skylight", sky_amount)]
     for i, (layer, source) in enumerate(layer_sources):
         copy = nuke.nodes.Copy(name="Layer_" + layer, xpos=0, ypos=320 + 40 * i)
         copy.setInput(0, stream)

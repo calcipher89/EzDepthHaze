@@ -36,7 +36,13 @@
 //         in-scatter, g = wisps: the noise's density change, weighted like the in-scatter,
 //         b = surface sun visibility), 7 = surface sunlight, 8 = world position (P),
 //         9 = surface normal (N), 10 = the clouds' shade on the surface alone (1 lit, 0 under
-//         cloud; no terrain shadow), for the Cloud Gaps view with EzCloudGen volumes
+//         cloud; no terrain shadow), for the Cloud Gaps view with EzCloudGen volumes,
+//         11 = surface sky light factor K: the comp adds plate * K * (1 - sun visibility x
+//         facing) to the plate. Tint mode: K = sky colour / its luminance - 1 (a hue shift
+//         towards the sky that keeps the brightness); Add mode: K = the sky's light on the
+//         surface (the sky straight up times the share of the sky it faces; times 'albedo'
+//         with albedo from Constant, when the comp then adds it as it is). a = how squarely
+//         the surface faces the sun (0 turned away .. 1). 0 for sky pixels.
 //
 // cloudFromMap 2: `cloudMap` is EzCloudGen's cloud_sunmap layer: for each ground point around
 // the camera (sunMapSize sets its reach), the clouds' optical depth along the sun ray in red,
@@ -123,6 +129,10 @@ param:
   float surfaceStrength;
   int albedoFromPlate;
   float3 albedo;
+  int shadowFillFromSky;
+  int skyLightFromEnv;
+  int skyLightAdd;
+  float3 skyLightColor;
 
 local:
   float pi;
@@ -200,6 +210,10 @@ local:
     defineParam(surfaceStrength, "surface_strength", 1.0f);
     defineParam(albedoFromPlate, "albedo_from_plate", 1);
     defineParam(albedo, "albedo", float3(0.15f, 0.15f, 0.15f));
+    defineParam(shadowFillFromSky, "shadow_fill_from_sky", 0);
+    defineParam(skyLightFromEnv, "sky_light_from_env", 1);
+    defineParam(skyLightAdd, "sky_light_add", 0);
+    defineParam(skyLightColor, "sky_light_color", float3(0.45f, 0.6f, 1.0f));
   }
 
   void init()
@@ -573,6 +587,24 @@ local:
         dst() = float4(n.x, n.y, n.z, 1.0f);
         return;
       }
+      if (output == 11) {
+        // The sky's light: the sky-lit haze colour straight up (with a camera-mapped atmos,
+        // the top of the frame), or the colour knob; times the share of the sky a surface
+        // facing n sees, (1 + n.y) / 2.
+        float3 skyCol = skyLightColor;
+        if (skyLightFromEnv != 0 && useEnv != 0)
+          skyCol = skyLookup(float3(0.0f, 1.0f, 0.0f), float2(0.5f, 0.999f));
+        float facing = clamp(dot(n, sunWorld) / 0.15f, 0.0f, 1.0f);
+        float3 k = skyCol * (0.5f + 0.5f * n.y);
+        if (skyLightAdd != 0 && albedoFromPlate == 0)
+          k = k * albedo;
+        if (skyLightAdd == 0) {
+          float l = luma(skyCol);
+          k = l > 1e-9f ? skyCol / l - float3(1.0f) : float3(0.0f);
+        }
+        dst() = float4(k.x, k.y, k.z, facing);
+        return;
+      }
       float j = jitterAt(pos, 3.0f);
       float3 sun = jitteredSun(jitterAt(pos, 5.0f), jitterAt(pos, 7.0f));
       float vis = sunVisibility(surfacePoint + n * (1.0f + 0.001f * surfaceDist), origin, sun, shadowSamples * 2, j);
@@ -684,8 +716,16 @@ local:
         tPrev = t;
         }
       }
-      // Some of the lost sunlight can be put back, tinted, for an artistic fill.
-      sunIn += shadowFill * (sunFree - sunIn);
+      // Some of the lost sunlight can be put back, tinted, for an artistic fill: as sunlight,
+      // or (shadow fill from sky) with the sky-lit haze's colour at the same brightness, so the
+      // haze in shadow goes cool instead of a dimmer copy of the warm sunlit haze.
+      float3 lost = sunFree - sunIn;
+      if (shadowFillFromSky != 0) {
+        float skyLum = luma(skyNear);
+        float3 skyTint = skyLum > 1e-9f ? skyNear / skyLum : float3(1.0f);
+        lost = skyTint * luma(lost);
+      }
+      sunIn += shadowFill * lost;
     }
 
     float3 rgb = transmittance;
