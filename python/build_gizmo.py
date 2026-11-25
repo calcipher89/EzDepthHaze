@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -188,7 +188,7 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "noise_wind", "sky_threshold", "sky_distance",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
                          "surface_add", "surface_strength", "silhouette", "haze_color_gain",
@@ -519,6 +519,12 @@ def _add_knobs(group, depth_pick, env_pick):
     add(*_double("fog_top", "fog top (m)", -500, 5000, "Altitude the fog fills up to, e.g. the valley floor "
                  "plus a few hundred metres.", 1000.0))
     add(*_double("fog_softness", "fog softness (m)", 0, 2000, "How gradually the fog fades out around its top.", 300.0))
+    add(*_double("fog_start", "fog start (km)", 0, 200, "Distance from the camera where the fog begins (it builds up "
+                 "over 'fog start fade'). Leaves the near valleys clear and lays the fog as a thin band along "
+                 "the far horizon, behind the far ranges. 0: everywhere (as before). Counts from the camera, not "
+                 "from 'haze start'; with 'match horizon' the band still takes the horizon sky's colour.", 0.0))
+    add(*_double("fog_start_fade", "fog start fade (km)", 0, 100, "How far the fog takes to build up beyond 'fog "
+                 "start'. Longer is softer.", 5.0))
     add(*_double("noise_amount", "noise amount", 0, 1, "How much world-space noise breaks up the fog.", 0.0))
     add(*_double("noise_on_haze", "noise on haze", 0, 1, "How much of the noise also applies to the "
                  "thin haze, not only the fog.", 0.3))
@@ -709,6 +715,8 @@ def _link_haze(node, output):
     _link(node, "fog_density", "parent.fog_density / 1000")
     _link(node, "fog_top", "parent.fog_top")
     _link(node, "fog_softness", "parent.fog_softness")
+    _link(node, "fog_start", "parent.fog_start * 1000")
+    _link(node, "fog_start_fade", "parent.fog_start_fade * 1000")
     _link(node, "noise_amount", "parent.noise_amount")
     _link(node, "noise_on_haze", "parent.noise_on_haze")
     _link(node, "noise_size", "parent.noise_size")

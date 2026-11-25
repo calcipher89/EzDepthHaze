@@ -18,7 +18,9 @@
 //
 // With `volumetric` on the density can also vary along the ray: a fog layer filling
 // everything below fogTop (soft over fogSoftness) and 3D fBm noise fixed in world space
-// that drifts with noiseWind over noiseTime.
+// that drifts with noiseWind over noiseTime. With fogStart the fog only builds beyond that
+// distance from the camera (fading in over fogStartFade), so one node can lay a thin band
+// along the far horizon and leave the near valleys clear.
 //
 // Far away the haze light blends towards `horizonLight` (the atmosphere's own sky light
 // per unit of haze, as a ratio to the haze colour) over matchDistance, so distant terrain
@@ -92,6 +94,8 @@ param:
   float fogDensity;
   float fogTop;
   float fogSoftness;
+  float fogStart;
+  float fogStartFade;
   float noiseAmount;
   float noiseOnHaze;
   float noiseSize;
@@ -173,6 +177,8 @@ local:
     defineParam(fogDensity, "fog_density", 0.0f);
     defineParam(fogTop, "fog_top", 1000.0f);
     defineParam(fogSoftness, "fog_softness", 300.0f);
+    defineParam(fogStart, "fog_start", 0.0f);
+    defineParam(fogStartFade, "fog_start_fade", 0.0f);
     defineParam(noiseAmount, "noise_amount", 0.0f);
     defineParam(noiseOnHaze, "noise_on_haze", 0.3f);
     defineParam(noiseSize, "noise_size", 2000.0f);
@@ -417,6 +423,16 @@ local:
     // of the sky is cloud.
     n = clamp(0.5f + (n - 0.5f) * 3.0f, 0.0f, 1.0f) + rough * 0.3f;
     float e = clamp((n - cloudCover) / soft + 0.5f, 0.0f, 1.0f);
+    return e * e * (3.0f - 2.0f * e);
+  }
+
+  // How much of the fog there is at distance t along the ray: 0 before fogStart, rising over
+  // fogStartFade (smoothly) to 1. 1 everywhere with fogStart 0.
+  float fogDistance(float t)
+  {
+    if (fogStart <= 0.0f)
+      return 1.0f;
+    float e = clamp((t - fogStart) / max(fogStartFade, 1.0f), 0.0f, 1.0f);
     return e * e * (3.0f - 2.0f * e);
   }
 
@@ -676,7 +692,8 @@ local:
           continue;
         int sub = 1;
         if (volumetric != 0 && fogDensity > 0.0f &&
-            min(origin.y + dir.y * tPrev, origin.y + dir.y * tEnd) < fogCeiling)
+            min(origin.y + dir.y * tPrev, origin.y + dir.y * tEnd) < fogCeiling &&
+            (fogStart <= 0.0f || tEnd > fogStart))
           sub = (int)clamp(ceil((tEnd - tPrev) / fogStep), 1.0f, 16.0f);
         float tStart = tPrev;
         for (int q = 0; q < sub; q++) {
@@ -690,7 +707,7 @@ local:
         if (volumetric != 0) {
           n = noiseFactor(p);
           float3 haze = hazeDensity * (hazeAmount * exp(-(p.y - origin.y) / hazeHeight));
-          float fog = fogProfile(p.y);
+          float fog = fogProfile(p.y) * fogDistance(tMid);
           sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
           float total = luma(sigma);
           fogPart = total > 0.0f ? fog * n * (t - tPrev) / total : 0.0f;

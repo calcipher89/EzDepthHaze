@@ -6,7 +6,9 @@ CG render using its depth, lit by the same atmosphere.
 
 Target: Nuke 15.1.
 
-Status: v1.1.0. New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
+Status: v1.2.0. New in 1.2: **fog start** and **fog start fade** let the fog build only beyond a
+distance, so one node lays a thin band along the far horizon and leaves near valleys clear (0:
+as before). New in 1.1: **shadow sky light** gives a plate's shadowed surfaces the sky's
 cool colour (snow and rock in shade under a clear sky), and **fill from: Sky** puts the shadow
 fill back in the sky-lit haze's colour. Both are off by default: v1.0.0 scripts render the same.
 
@@ -246,6 +248,8 @@ speed.
 | fog density (1/km) | 0 | Thickness of the fog layer |
 | fog top (m) | 1000 | Altitude the fog fills up to |
 | fog softness (m) | 300 | How gradually the fog fades out around its top |
+| fog start (km) | 0 (off) | Distance from the camera where the fog begins: near valleys stay clear and the fog lies as a thin band along the far horizon. Counts from the camera, not from *haze start* |
+| fog start fade (km) | 5 | How far the fog takes to build up beyond *fog start* |
 | noise amount | 0 | How much the noise breaks up the fog |
 | noise on haze | 0.3 | How much of the noise applies to the thin haze as well |
 | noise size (m) | 2000 | Size of the largest wisps and banks |
