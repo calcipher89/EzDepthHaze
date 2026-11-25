@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -103,7 +103,8 @@ _FIND_ATMOS = ("a = nuke.thisNode().input(2)\n"
 # "a|b" reads a when the atmos node has it, else b: the sun is EzAtmosScatter's sun in use
 # (found in the HDRI, from its Axis or manual), or its manual sun on older versions.
 ATMOS_KNOBS = [("atm_haze_density", "haze_density", 3), ("atm_haze_height", "haze_height", 1),
-               ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_in_use|sun_direction", 3)]
+               ("atm_hdri_rotation", "hdri_rotation", 1), ("atm_sun_direction", "sun_in_use|sun_direction", 3),
+               ("atm_rayleigh_scale_height", "rayleigh_scale_height", 1)]
 
 
 def _add_atmos_knobs(add):
@@ -111,6 +112,9 @@ def _add_atmos_knobs(add):
     found = nuke.Int_Knob("atm_found", "atmos found")
     found.setFlag(nuke.INVISIBLE)
     add(found)
+    share = nuke.XYZ_Knob("atm_air_share", "atm_air_share")
+    share.setFlag(nuke.INVISIBLE)
+    add(share)
     for name, _, size in ATMOS_KNOBS:
         knob = nuke.Double_Knob(name, name) if size == 1 else nuke.XYZ_Knob(name, name)
         knob.setFlag(nuke.INVISIBLE)
@@ -119,6 +123,17 @@ def _add_atmos_knobs(add):
 
 def _link_atmos_knobs(group):
     group["atm_found"].setExpression("[python -execlocal {%sret = 1 if a is not None else 0}]" % _FIND_ATMOS)
+    # Height model Air + Aerosol: the air's share of the atmos's extinction at camera height
+    # (Rayleigh over Rayleigh + Mie, as EzAtmosScatter's haze density adds them), per channel.
+    for i in range(3):
+        group["atm_air_share"].setExpression(
+            "[python -execlocal {%simport math\n"
+            "ret = 0.5\n"
+            "if a is not None and a.knob('rayleigh_coefficients') is not None:\n"
+            "    hk = a['camera_height'].value() / 1000.0\n"
+            "    rr = a['rayleigh_coefficients'].getValueAt(nuke.frame(), %d) * a['sky_amount'].value() * math.exp(-hk / a['rayleigh_scale_height'].value())\n"
+            "    mm = a['mie_coefficient'].value() * a['haze_amount'].value() / 0.9 * math.exp(-hk / max(a['haze_height'].value(), 1e-3))\n"
+            "    ret = rr / max(rr + mm, 1e-12)}]" % (_FIND_ATMOS, i), i)
     # Clouds from the clouds input (when picked and plugged in), or from the atmos node's
     # atmos_clouds layer (when picked and the atmos node outputs a lat-long), else noise.
     group["clouds_source"].setExpression(
@@ -188,7 +203,8 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "noise_wind", "sky_threshold", "sky_distance",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften",
+                         "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
                          "surface_add", "surface_strength", "silhouette", "haze_color_gain",
@@ -508,6 +524,17 @@ def _add_knobs(group, depth_pick, env_pick):
     add(*_double("haze_amount", "haze amount", 0, 10, "Multiplies the haze density.", 1.0))
     add(*_double("haze_height", "haze height (km)", 0.05, 10,
                  "Height over which the haze thins by about two thirds. Ignored when inheriting.", 1.2))
+    hm = nuke.Enumeration_Knob("height_model", "height model", ["Single", "Air + Aerosol"])
+    hm.setTooltip("Single: the haze thins with one height, 'haze height' (as before). Air + Aerosol: as the "
+                  "atmosphere does it, the clear air thins slowly ('air height', about 8.5 km) and the aerosol "
+                  "haze fast ('haze height', about 1.2 km), so far and high terrain keeps the air's blue haze "
+                  "while the warm low haze stays down in the valleys. Heights and the air's share come from the "
+                  "atmos input when inheriting.")
+    add(hm)
+    add(*_double("air_height", "air height (km)", 0.5, 20, "Air + Aerosol: height over which the clear air thins by "
+                 "about two thirds. Ignored when inheriting (the atmos's Rayleigh scale height).", 8.5))
+    add(*_double("air_share", "air share", 0, 1, "Air + Aerosol: the air's share of the haze density at camera height "
+                 "(the rest is aerosol). Ignored when inheriting (the atmos's Rayleigh over Rayleigh + Mie).", 0.5))
     add(*_double("haze_start", "haze start (m)", 0, 10000, "Distance from the camera where the haze begins.", 0.0))
     add(*_double("max_distance", "max distance (km)", 0, 200, "Caps the hazed distance. 0 = no cap.", 0.0))
     add(*_double("env_rotation", "atmos rotation", -180, 180,
@@ -534,6 +561,16 @@ def _add_knobs(group, depth_pick, env_pick):
                  "it is: this many metres of extra softness per kilometre of distance. Seen edge-on far away a "
                  "crisp top reads as a hard, saw-toothed line along the horizon; real fog tops thin out over "
                  "hundreds of metres. 0: the same softness everywhere (as before).", 0.0))
+    add(*_double("fog_brightness", "fog brightness", 0, 10, "Multiplies the light the fog scatters (not the haze's). "
+                 "With it, 'fog color' or 'fog forward glow' set, the fog is lit by the light at the camera, not dimmed "
+                 "and reddened with distance by 'match horizon', so a far fog band can glow paler than the ranges "
+                 "in front of it. 1: as before.", 1.0))
+    fog_color = nuke.Color_Knob("fog_color", "fog color")
+    fog_color.setTooltip("Tints the light the fog scatters (an artistic control). White: as before.")
+    add(fog_color, [1.0, 1.0, 1.0])
+    add(*_double("fog_glow", "fog forward glow", 0, 4, "Fog droplets scatter strongly forwards: towards the sun the "
+                 "fog's sunlit light gains a forward peak this strong (Henyey-Greenstein, g 0.8), so a band near the "
+                 "sun blazes warm. 0: as before.", 0.0))
     add(*_double("fog_start_fade", "fog start fade (km)", 0, 100, "How far the fog takes to build up beyond 'fog "
                  "start'. Longer is softer.", 5.0))
     add(*_double("noise_amount", "noise amount", 0, 1, "How much world-space noise breaks up the fog.", 0.0))
@@ -720,6 +757,10 @@ def _link_haze(node, output):
     _link(node, "haze_color_gain", "parent.haze_color_gain")
     _link(node, "haze_amount", "parent.haze_amount")
     _link(node, "haze_height", "(%s) * 1000" % (ATMOS % ("haze_height", "haze_height", "parent.haze_height")))
+    _link(node, "height_model", "parent.height_model")
+    _link(node, "air_height", "(%s) * 1000" % (ATMOS % ("rayleigh_scale_height", "rayleigh_scale_height", "parent.air_height")))
+    for i, c in enumerate("xyz"):
+        _link(node, "air_share", "parent.inherit_atmos && parent.atm_found ? parent.atm_air_share.%s : parent.air_share" % c, i)
     _link(node, "haze_start", "parent.haze_start")
     _link(node, "max_distance", "parent.max_distance * 1000")
     _link(node, "volumetric", "parent.haze_mode")
@@ -730,6 +771,12 @@ def _link_haze(node, output):
     _link(node, "fog_start", "parent.fog_start * 1000")
     _link(node, "fog_start_fade", "parent.fog_start_fade * 1000")
     _link(node, "fog_soften", "parent.fog_soften / 1000")
+    _link(node, "fog_light", "parent.fog_brightness != 1 || parent.fog_color.r != 1 || parent.fog_color.g != 1 || "
+                             "parent.fog_color.b != 1 || parent.fog_glow != 0")
+    _link(node, "fog_brightness", "parent.fog_brightness")
+    _link(node, "fog_glow", "parent.fog_glow")
+    for i, c in enumerate("rgb"):
+        _link(node, "fog_color", "parent.fog_color.%s" % c, i)
     _link(node, "noise_amount", "parent.noise_amount")
     _link(node, "noise_on_haze", "parent.noise_on_haze")
     _link(node, "noise_size", "parent.noise_size")
