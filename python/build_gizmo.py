@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -205,7 +205,8 @@ def _tool_code(defaults, advanced_knobs=()):
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
                         {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase", "fog_far_light", "fog_far_distance", "fog_far_brightness",
                          "fog_top_variation", "fog_top_variation_size", "fog_top_variation_distance", "fog_top_erosion",
-                         "sun_scatter_color",
+                         "sun_scatter_color", "haze_noise", "haze_noise_size", "haze_noise_flatten",
+                         "haze_noise_sharpness", "haze_noise_from", "haze_noise_to",
                          "fog_top_erosion_size",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
@@ -636,6 +637,18 @@ def _add_knobs(group, depth_pick, env_pick):
                  "gives grainier, more detailed noise.", 0.5))
     add(*_double("noise_sharpness", "noise sharpness", 1, 6, "Steepens the noise: 1 is soft blobs, higher gives "
                  "patches with crisp edges.", 1.0))
+    add(*_double("haze_noise", "haze noise", 0, 1, "Texture for the thin haze alone, with its own shape: large, "
+                 "flat, gently undulating sheets of thicker and thinner haze, so a long look across the land at the "
+                 "horizon shows layered variation instead of a smooth glow. The mean is kept. 0: off (as before).", 0.0))
+    add(*_double("haze_noise_size", "haze noise size (km)", 0.5, 50, "Haze noise: horizontal size of the sheets.", 8.0))
+    add(*_double("haze_noise_flatten", "haze noise flatten", 1, 50, "Haze noise: how much flatter than wide the "
+                 "sheets are.", 15.0))
+    add(*_double("haze_noise_sharpness", "haze noise sharpness", 1, 6, "Haze noise: steepens it, from soft to "
+                 "patches with edges.", 2.0))
+    add(*_double("haze_noise_from", "haze noise from (km)", 0, 200, "Haze noise fades in over this distance "
+                 "from the camera. 0: from the camera.", 0.0))
+    add(*_double("haze_noise_to", "haze noise to (km)", 0, 500, "Haze noise fades out from this distance to twice "
+                 "it, so the far haze stays smooth. 0: no limit.", 0.0))
     wind = nuke.XYZ_Knob("noise_wind", "wind (m/s)")
     wind.setTooltip("Drifts the noise over time.")
     add(wind, [5.0, 0.0, 0.0])
@@ -853,6 +866,12 @@ def _link_haze(node, output):
     _link(node, "blue_noise", "parent.blue_noise")
     _link(node, "noise_roughness", "parent.noise_roughness")
     _link(node, "noise_sharpness", "parent.noise_sharpness")
+    _link(node, "haze_noise", "parent.haze_noise")
+    _link(node, "haze_noise_size", "parent.haze_noise_size * 1000")
+    _link(node, "haze_noise_flatten", "parent.haze_noise_flatten")
+    _link(node, "haze_noise_sharpness", "parent.haze_noise_sharpness")
+    _link(node, "haze_noise_from", "parent.haze_noise_from * 1000")
+    _link(node, "haze_noise_to", "parent.haze_noise_to * 1000")
     for i, c in enumerate("xyz"):
         _link(node, "noise_wind", "parent.noise_wind.%s" % c, i)
     _link(node, "noise_time", "frame / root.fps")
