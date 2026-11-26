@@ -104,6 +104,8 @@ param:
   int fogFromSky;
   int fogPhase;
   int fogFar;
+  float fogTopVar;
+  float fogTopVarSize;
   float fogFarDistance;
   float fogFarBrightness;
   float fogPhaseG;
@@ -203,6 +205,8 @@ local:
     defineParam(fogFromSky, "fog_from_sky", 0);
     defineParam(fogPhase, "fog_phase", 0);
     defineParam(fogFar, "fog_far", 0);
+    defineParam(fogTopVar, "fog_top_variation", 0.0f);
+    defineParam(fogTopVarSize, "fog_top_variation_size", 8000.0f);
     defineParam(fogFarDistance, "fog_far_distance", 40000.0f);
     defineParam(fogFarBrightness, "fog_far_brightness", 1.0f);
     defineParam(fogPhaseG, "fog_phase_g", 0.76f);
@@ -479,11 +483,32 @@ local:
     return fogHorizon != 0 ? t * t / (2.0f * 6371000.0f * 7.0f / 6.0f) : 0.0f;
   }
 
-  float fogProfile(float y, float t)
+  // Fog top variation: the fog's top rises and falls by up to 'fog top variation' metres over
+  // features about 'variation size' across (2D noise over the ground, drifting with the noise
+  // wind), so seen edge-on far away the layer's top is broken into banks and strata instead of a
+  // level line. 0: one level top (as before).
+  float fogTopAt(float3 p)
   {
-    y += curveLift(t);
+    if (fogTopVar <= 0.0f)
+      return fogTop;
+    float3 q = (p - noiseWind * noiseTime) / max(fogTopVarSize, 1.0f);
+    q = float3(q.x, 17.3f, q.z);
+    float sum = 0.0f, amp = 0.5f, norm = 0.0f;
+    for (int i = 0; i < 4; i++) {
+      sum += amp * vnoise3(q);
+      norm += amp;
+      q = float3(q.x * 2.03f + 1.7f, q.y, q.z * 2.03f + 4.1f);
+      amp *= 0.5f;
+    }
+    float n = clamp(0.5f + (sum / norm - 0.5f) * 2.0f, 0.0f, 1.0f);
+    return fogTop + fogTopVar * (2.0f * n - 1.0f);
+  }
+
+  float fogProfile(float3 p, float t)
+  {
+    float y = p.y + curveLift(t);
     float soft = fogSoftness + fogSoften * t;
-    float edge = clamp((y - fogTop) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
+    float edge = clamp((y - fogTopAt(p)) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
     return fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
   }
 
@@ -741,7 +766,7 @@ local:
     bool skyFog = false;
     if (sky && hazeSky == 0 && fogHorizon != 0 && volumetric != 0 && fogDensity > 0.0f) {
       float a = 1.0f / (2.0f * 6371000.0f * 7.0f / 6.0f);
-      float ceil0 = fogTop + 0.5f * max(fogSoftness, 1.0f);
+      float ceil0 = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness, 1.0f);
       for (int it = 0; it < 2; it++) {
         float c = origin.y - ceil0;
         float disc = dir.y * dir.y - 4.0f * a * c;
@@ -756,7 +781,7 @@ local:
         s = tIn;
         dist = tOut;
         // The top softens with distance: widen the layer to the ceiling at the far end and redo.
-        ceil0 = fogTop + 0.5f * max(fogSoftness + fogSoften * tOut, 1.0f);
+        ceil0 = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness + fogSoften * tOut, 1.0f);
       }
       if (!skyFog) {
         s = 0.0f;
@@ -823,7 +848,7 @@ local:
       // Fog sits in a thin layer, and far steps are long: split a step that reaches into the
       // fog into sub-steps about half the fog's softness long (up to 8), so beams crossing it
       // stay smooth instead of aliasing into a comb.
-      float fogCeiling = fogTop + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
+      float fogCeiling = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
       // The curved earth lifts every point of the ray above the fog (curveLift >= 0), so the
       // flat heights below are a safe lower bound for the sub-step test.
       float fogStep = max(0.5f * fogSoftness, 10.0f);
@@ -871,7 +896,7 @@ local:
         if (volumetric != 0) {
           n = noiseFactor(p);
           float3 haze = skyFog ? float3(0.0f) : hazeAt(p.y - origin.y);
-          float fog = fogProfile(p.y, tMid) * fogDistance(tMid);
+          float fog = fogProfile(p, tMid) * fogDistance(tMid);
           sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
           float total = luma(sigma);
           fogPart = total > 0.0f ? fog * n * (t - tPrev) / total : 0.0f;
