@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.10.1"
+VERSION = "1.11.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -205,6 +205,7 @@ def _tool_code(defaults, advanced_knobs=()):
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
                         {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase", "fog_far_light", "fog_far_distance", "fog_far_brightness",
                          "fog_top_variation", "fog_top_variation_size", "fog_top_variation_distance", "fog_top_erosion",
+                         "sun_scatter_color",
                          "fog_top_erosion_size",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
@@ -646,6 +647,11 @@ def _add_knobs(group, depth_pick, env_pick):
                    "inheriting (set its 'sun from' to Manual so the two agree).")
     add(sun, [0.0, 0.1, -1.0])
     add(*_double("sun_scatter", "sun scatter", 0, 4, "Multiplies the sunlit haze: how bright the light shafts are.", 1.0))
+    ssc = nuke.Color_Knob("sun_scatter_color", "sun scatter color")
+    ssc.setTooltip("Tints the haze's sunlit light only (not its sky light, not the fog). Toward a low sun a deeper, "
+                   "dimmer colour (e.g. 1.25, 0.95, 0.6 with a lower sun scatter) keeps the gold while the land shows "
+                   "through the glow. It follows the forward glow, so it stays near the sun. White: as before.")
+    add(ssc, [1.0, 1.0, 1.0])
     add(*_double("sky_scatter", "sky scatter", 0, 4, "Multiplies the sky-lit haze: how bright the haze in shadow is.", 1.0))
     add(*_double("shadow_strength", "shadow strength", 0, 1, "How much sunlight the haze loses where the terrain "
                  "blocks the sun. 1 is physical; 0 turns volumetric shadows off.", 1.0))
@@ -853,6 +859,8 @@ def _link_haze(node, output):
     _link(node, "noise_seed", "parent.noise_seed")
     _link(node, "sun_share", "parent.sun_share")
     _link(node, "sun_scatter", "parent.sun_scatter")
+    for i, c in enumerate("rgb"):
+        _link(node, "sun_scatter_color", "parent.sun_scatter_color.%s" % c, i)
     _link(node, "sky_scatter", "parent.sky_scatter")
     _link(node, "shadow_strength", "parent.shadow_strength")
     for i, c in enumerate("rgb"):

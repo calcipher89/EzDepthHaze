@@ -142,6 +142,7 @@ param:
   int matchPlate;
   float matchDistance;
   float sunScatter;
+  float3 sunScatterColor;
   float skyScatter;
   float shadowStrength;
   float3 shadowFill;
@@ -246,6 +247,7 @@ local:
     defineParam(matchPlate, "match_plate", 0);
     defineParam(matchDistance, "match_distance", 20000.0f);
     defineParam(sunScatter, "sun_scatter", 1.0f);
+    defineParam(sunScatterColor, "sun_scatter_color", float3(1.0f, 1.0f, 1.0f));
     defineParam(skyScatter, "sky_scatter", 1.0f);
     defineParam(shadowStrength, "shadow_strength", 0.0f);
     defineParam(shadowFill, "shadow_fill", float3(0.0f, 0.0f, 0.0f));
@@ -826,7 +828,10 @@ local:
 
     // Haze light: the sunlit and sky-lit parts, and the same far away, where they take on
     // the atmosphere's own horizon sky.
-    float3 sunNear = (useEnv != 0 ? sunLookup(dir, float2(u, v)) : hazeFlatSun) * (hazeColorGain * sunScatter);
+    float3 sunNearRaw = (useEnv != 0 ? sunLookup(dir, float2(u, v)) : hazeFlatSun) * (hazeColorGain * sunScatter);
+    // Sun scatter color: tints the haze's sunlit light only (not its sky light, not the fog), so the
+    // glow toward a low sun can be deeper in hue and dimmer at once. White: as before.
+    float3 sunNear = sunNearRaw * sunScatterColor;
     float3 skyNear = (useEnv != 0 ? skyLookup(dir, float2(u, v)) : hazeFlatSky) * (hazeColorGain * skyScatter);
     float3 k = useFar != 0 ? horizonLookup(dir, float2(u, v)) : float3(1.0f);
     // The horizon sky differs from the camera's light because sunlight further away is dimmer
@@ -904,11 +909,11 @@ local:
       // (Mie) peak; thick fog scatters many times over, which flattens it, so take that peak back
       // out (Henyey-Greenstein with the atmos's g, relative to an even spread, where it is above 1)
       // and leave 'fog forward glow' as the fog's own peak. Haze: as before.
-      float3 fogSunN = sunNear;
+      float3 fogSunN = sunNearRaw;
       if (fogPhase != 0) {
         float g2 = fogPhaseG * fogPhaseG;
         float hazePeak = (1.0f - g2) / pow(max(1.0f + g2 - 2.0f * fogPhaseG * fogMu, 1e-4f), 1.5f);
-        fogSunN = sunNear / max(hazePeak, 1.0f);
+        fogSunN = sunNearRaw / max(hazePeak, 1.0f);
       }
       for (int i = 0; i <= steps; i++) {
         float tEnd = i < steps ? s + (dist - s) * ((i + jitter) / steps) * ((i + jitter) / steps) : dist;
