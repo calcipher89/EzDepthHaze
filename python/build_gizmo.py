@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.8.0"
+VERSION = "1.11.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -203,7 +203,10 @@ def _tool_code(defaults, advanced_knobs=()):
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
-                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase",
+                        {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase", "fog_far_light", "fog_far_distance", "fog_far_brightness",
+                         "fog_top_variation", "fog_top_variation_size", "fog_top_variation_distance", "fog_top_erosion",
+                         "sun_scatter_color",
+                         "fog_top_erosion_size",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
@@ -582,6 +585,31 @@ def _add_knobs(group, depth_pick, env_pick):
     fog_color = nuke.Color_Knob("fog_color", "fog color")
     fog_color.setTooltip("Tints the light the fog scatters (an artistic control). White: as before.")
     add(fog_color, [1.0, 1.0, 1.0])
+    add(*_double("fog_top_variation", "fog top variation (m)", 0, 2000, "Lets the fog's top rise and fall by up to "
+                 "this much over banks about 'variation size' across (noise over the ground, drifting with the noise "
+                 "wind), so seen edge-on far away the layer's top breaks into banks and strata instead of a level, "
+                 "smooth line. 0: one level top (as before).", 0.0))
+    add(*_double("fog_top_variation_size", "variation size (km)", 0.2, 100, "Fog top variation: the size of the "
+                 "banks the top rises and falls over.", 8.0))
+    add(*_double("fog_top_variation_distance", "variation with distance (/km)", 0, 1, "Fog top variation: the "
+                 "variation grows by this much per kilometre of distance (0.05: twice as big 20 km out), so banks far "
+                 "away, where a few hundred metres is a pixel or two, still show. 0: the same everywhere.", 0.0))
+    add(*_double("fog_top_erosion", "fog top erosion", 0, 1, "Finer noise eats the fog away inside its top's soft "
+                 "edge (most half way through it), so the top breaks into banks and wisps instead of a smooth edge. "
+                 "0: off (as before).", 0.0))
+    add(*_double("fog_top_erosion_size", "erosion size (m)", 50, 5000, "Fog top erosion: size of the largest "
+                 "wisps; two finer octaves follow where they are bigger than a pixel or two.", 600.0))
+    ffl = nuke.Enumeration_Knob("fog_far_light", "fog far light", ["Off", "Plate Sky"])
+    ffl.setTooltip("Off: the fog has one light at every distance (as before). Plate Sky: far away the fog's light "
+                   "hands over to the sky the plate shows at the skyline above each pixel (times 'fog color' and "
+                   "'fog far brightness'), over 'fog far distance', so near fog keeps the sun's light and shading "
+                   "while far fog and the band at the horizon melt into the sky instead of showing the layer's "
+                   "level top as a darker strip.")
+    add(ffl)
+    add(*_double("fog_far_distance", "fog far distance (km)", 1, 200, "Fog far light: distance over which the fog's "
+                 "light hands over to the plate's sky (about two thirds of the way there at this distance).", 40.0))
+    add(*_double("fog_far_brightness", "fog far brightness", 0, 4, "Fog far light: the far fog's brightness against "
+                 "the plate's sky (1 the same; a little under 1 sits it just darker than the sky).", 1.0))
     fph = nuke.Enumeration_Knob("fog_phase", "fog phase", ["Haze", "Own"])
     fph.setTooltip("How the fog's sunlight depends on the view angle. Haze: the haze's (as before): toward the "
                    "sun the fog takes the haze's bright forward peak, so a long look through fog toward a low "
@@ -619,6 +647,11 @@ def _add_knobs(group, depth_pick, env_pick):
                    "inheriting (set its 'sun from' to Manual so the two agree).")
     add(sun, [0.0, 0.1, -1.0])
     add(*_double("sun_scatter", "sun scatter", 0, 4, "Multiplies the sunlit haze: how bright the light shafts are.", 1.0))
+    ssc = nuke.Color_Knob("sun_scatter_color", "sun scatter color")
+    ssc.setTooltip("Tints the haze's sunlit light only (not its sky light, not the fog). Toward a low sun a deeper, "
+                   "dimmer colour (e.g. 1.25, 0.95, 0.6 with a lower sun scatter) keeps the gold while the land shows "
+                   "through the glow. It follows the forward glow, so it stays near the sun. White: as before.")
+    add(ssc, [1.0, 1.0, 1.0])
     add(*_double("sky_scatter", "sky scatter", 0, 4, "Multiplies the sky-lit haze: how bright the haze in shadow is.", 1.0))
     add(*_double("shadow_strength", "shadow strength", 0, 1, "How much sunlight the haze loses where the terrain "
                  "blocks the sun. 1 is physical; 0 turns volumetric shadows off.", 1.0))
@@ -796,9 +829,17 @@ def _link_haze(node, output):
     _link(node, "fog_horizon", "parent.fog_horizon")
     _link(node, "fog_light", "parent.fog_brightness != 1 || parent.fog_color.r != 1 || parent.fog_color.g != 1 || "
                              "parent.fog_color.b != 1 || parent.fog_glow != 0 || parent.fog_light_from != 0 || "
-                             "parent.fog_phase != 0")
+                             "parent.fog_phase != 0 || parent.fog_far_light != 0")
     _link(node, "fog_from_sky", "parent.fog_light_from")
     _link(node, "fog_phase", "parent.fog_phase")
+    _link(node, "fog_far", "parent.fog_far_light")
+    _link(node, "fog_top_variation", "parent.fog_top_variation")
+    _link(node, "fog_top_variation_size", "parent.fog_top_variation_size * 1000")
+    _link(node, "fog_top_variation_distance", "parent.fog_top_variation_distance")
+    _link(node, "fog_top_erosion", "parent.fog_top_erosion")
+    _link(node, "fog_top_erosion_size", "parent.fog_top_erosion_size")
+    _link(node, "fog_far_distance", "parent.fog_far_distance * 1000")
+    _link(node, "fog_far_brightness", "parent.fog_far_brightness")
     _link(node, "fog_phase_g", "clamp(1 - 0.24 * (parent.inherit_atmos && parent.atm_found ? parent.atm_haze_glow_size : 1), 0, 0.99)")
     _link(node, "fog_brightness", "parent.fog_brightness")
     _link(node, "fog_glow", "parent.fog_glow")
@@ -818,6 +859,8 @@ def _link_haze(node, output):
     _link(node, "noise_seed", "parent.noise_seed")
     _link(node, "sun_share", "parent.sun_share")
     _link(node, "sun_scatter", "parent.sun_scatter")
+    for i, c in enumerate("rgb"):
+        _link(node, "sun_scatter_color", "parent.sun_scatter_color.%s" % c, i)
     _link(node, "sky_scatter", "parent.sky_scatter")
     _link(node, "shadow_strength", "parent.shadow_strength")
     for i, c in enumerate("rgb"):
