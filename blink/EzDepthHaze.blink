@@ -124,6 +124,12 @@ param:
   int blueNoise;
   float noiseRoughness;
   float noiseSharpness;
+  float hazeNoise;
+  float hazeNoiseSize;
+  float hazeNoiseFlatten;
+  float hazeNoiseSharpness;
+  float hazeNoiseFrom;
+  float hazeNoiseTo;
   float3 noiseWind;
   float cloudCover;
   float cloudHeight;
@@ -229,6 +235,12 @@ local:
     defineParam(blueNoise, "blue_noise", 1);
     defineParam(noiseRoughness, "noise_roughness", 0.5f);
     defineParam(noiseSharpness, "noise_sharpness", 1.0f);
+    defineParam(hazeNoise, "haze_noise", 0.0f);
+    defineParam(hazeNoiseSize, "haze_noise_size", 8000.0f);
+    defineParam(hazeNoiseFlatten, "haze_noise_flatten", 15.0f);
+    defineParam(hazeNoiseSharpness, "haze_noise_sharpness", 2.0f);
+    defineParam(hazeNoiseFrom, "haze_noise_from", 0.0f);
+    defineParam(hazeNoiseTo, "haze_noise_to", 0.0f);
     defineParam(noiseWind, "noise_wind", float3(5.0f, 0.0f, 0.0f));
     defineParam(cloudCover, "cloud_cover", 0.0f);
     defineParam(cloudHeight, "cloud_height", 3000.0f);
@@ -379,6 +391,36 @@ local:
     // Sharpness steepens the noise around its middle: soft blobs become patches with edges.
     float n = clamp(0.5f + (sum / norm - 0.5f) * noiseSharpness, 0.0f, 1.0f);
     return max(1.0f + noiseAmount * 2.5f * (n - 0.5f), 0.0f);
+  }
+
+  // Haze noise: a density multiplier for the thin haze only, with its own shape (large, flat,
+  // undulating sheets, so a grazing look keeps them) and a distance window: it fades in over
+  // 'from' and out past 'to' (0: no limit), so it can texture one band of distance and leave the
+  // rest. 1 on average; octaves finer than about a pixel at distance t are skipped. Off: 1.
+  float hazeNoiseFactor(float3 p, float t)
+  {
+    if (hazeNoise <= 0.0f)
+      return 1.0f;
+    float w = hazeNoiseFrom > 0.0f ? clamp(t / hazeNoiseFrom, 0.0f, 1.0f) : 1.0f;
+    if (hazeNoiseTo > 0.0f)
+      w *= clamp(2.0f - t / hazeNoiseTo, 0.0f, 1.0f);
+    if (w <= 0.0f)
+      return 1.0f;
+    float3 q = (p - noiseWind * noiseTime) / max(hazeNoiseSize, 1.0f) + float3(37.1f, 11.3f, 53.7f);
+    q.y *= max(hazeNoiseFlatten, 1.0f);
+    q.y += 0.5f * vnoise3(q * float3(0.5f, 0.0f, 0.5f) + float3(3.3f, 0.0f, 7.7f));
+    float sum = 0.0f, amp = 0.5f, norm = 0.0f, th = max(hazeNoiseSize, 1.0f) / max(hazeNoiseFlatten, 1.0f);
+    for (int i = 0; i < 4; i++) {
+      if (th >= 0.0007f * t || i == 0) {
+        sum += amp * vnoise3(q);
+        norm += amp;
+      }
+      q = float3(q.x * 2.03f + 1.7f, q.y * 2.03f + 9.2f, q.z * 2.03f + 4.1f);
+      amp *= 0.5f;
+      th *= 0.5f;
+    }
+    float n = clamp(0.5f + (sum / max(norm, 1e-6f) - 0.5f) * max(hazeNoiseSharpness, 1.0f), 0.0f, 1.0f);
+    return max(1.0f + clamp(hazeNoise, 0.0f, 1.0f) * w * 2.0f * (n - 0.5f), 0.0f);
   }
 
   // Cloud gaps: a layer of cloud at cloud_height that blocks the sun except through gaps. A
@@ -937,7 +979,7 @@ local:
           n = noiseFactor(p);
           float3 haze = skyFog ? float3(0.0f) : hazeAt(p.y - origin.y);
           float fog = fogProfile(p, tMid) * fogDistance(tMid);
-          sigma = (haze * (1.0f - noiseOnHaze + noiseOnHaze * n) + float3(fog * n)) * (t - tPrev);
+          sigma = (haze * ((1.0f - noiseOnHaze + noiseOnHaze * n) * hazeNoiseFactor(p, tMid)) + float3(fog * n)) * (t - tPrev);
           float total = luma(sigma);
           fogPart = total > 0.0f ? fog * n * (t - tPrev) / total : 0.0f;
         } else {
