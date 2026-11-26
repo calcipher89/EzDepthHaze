@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.10.0"
+VERSION = "1.10.1"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -204,7 +204,8 @@ def _tool_code(defaults, advanced_knobs=()):
     # as advanced_knobs), anything a preset sets, and the grain and quality knobs.
     look_knobs = sorted(set(k for _, p in ezdepthhaze.PRESETS for k in p["knobs"]) | set(advanced_knobs) |
                         {"smooth", "blue_noise", "edge_antialias", "fog_top", "fog_softness", "fog_start", "fog_start_fade", "fog_soften", "fog_horizon", "fog_light_from", "fog_phase", "fog_far_light", "fog_far_distance", "fog_far_brightness",
-                         "fog_top_variation", "fog_top_variation_size",
+                         "fog_top_variation", "fog_top_variation_size", "fog_top_variation_distance", "fog_top_erosion",
+                         "fog_top_erosion_size",
                          "fog_brightness", "fog_color", "fog_glow", "noise_wind", "sky_threshold", "sky_distance",
                          "shadow_distance", "match_distance", "noise_on_haze", "penumbra", "sky_scatter",
                          "noise_detail", "noise_roughness", "noise_sharpness", "haze_start",
@@ -589,6 +590,14 @@ def _add_knobs(group, depth_pick, env_pick):
                  "smooth line. 0: one level top (as before).", 0.0))
     add(*_double("fog_top_variation_size", "variation size (km)", 0.2, 100, "Fog top variation: the size of the "
                  "banks the top rises and falls over.", 8.0))
+    add(*_double("fog_top_variation_distance", "variation with distance (/km)", 0, 1, "Fog top variation: the "
+                 "variation grows by this much per kilometre of distance (0.05: twice as big 20 km out), so banks far "
+                 "away, where a few hundred metres is a pixel or two, still show. 0: the same everywhere.", 0.0))
+    add(*_double("fog_top_erosion", "fog top erosion", 0, 1, "Finer noise eats the fog away inside its top's soft "
+                 "edge (most half way through it), so the top breaks into banks and wisps instead of a smooth edge. "
+                 "0: off (as before).", 0.0))
+    add(*_double("fog_top_erosion_size", "erosion size (m)", 50, 5000, "Fog top erosion: size of the largest "
+                 "wisps; two finer octaves follow where they are bigger than a pixel or two.", 600.0))
     ffl = nuke.Enumeration_Knob("fog_far_light", "fog far light", ["Off", "Plate Sky"])
     ffl.setTooltip("Off: the fog has one light at every distance (as before). Plate Sky: far away the fog's light "
                    "hands over to the sky the plate shows at the skyline above each pixel (times 'fog color' and "
@@ -820,6 +829,9 @@ def _link_haze(node, output):
     _link(node, "fog_far", "parent.fog_far_light")
     _link(node, "fog_top_variation", "parent.fog_top_variation")
     _link(node, "fog_top_variation_size", "parent.fog_top_variation_size * 1000")
+    _link(node, "fog_top_variation_distance", "parent.fog_top_variation_distance")
+    _link(node, "fog_top_erosion", "parent.fog_top_erosion")
+    _link(node, "fog_top_erosion_size", "parent.fog_top_erosion_size")
     _link(node, "fog_far_distance", "parent.fog_far_distance * 1000")
     _link(node, "fog_far_brightness", "parent.fog_far_brightness")
     _link(node, "fog_phase_g", "clamp(1 - 0.24 * (parent.inherit_atmos && parent.atm_found ? parent.atm_haze_glow_size : 1), 0, 0.99)")

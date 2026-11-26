@@ -105,6 +105,9 @@ param:
   int fogPhase;
   int fogFar;
   float fogTopVar;
+  float fogTopVarDist;
+  float fogErosion;
+  float fogErosionSize;
   float fogTopVarSize;
   float fogFarDistance;
   float fogFarBrightness;
@@ -206,6 +209,9 @@ local:
     defineParam(fogPhase, "fog_phase", 0);
     defineParam(fogFar, "fog_far", 0);
     defineParam(fogTopVar, "fog_top_variation", 0.0f);
+    defineParam(fogTopVarDist, "fog_top_variation_distance", 0.0f);
+    defineParam(fogErosion, "fog_top_erosion", 0.0f);
+    defineParam(fogErosionSize, "fog_top_erosion_size", 600.0f);
     defineParam(fogTopVarSize, "fog_top_variation_size", 8000.0f);
     defineParam(fogFarDistance, "fog_far_distance", 40000.0f);
     defineParam(fogFarBrightness, "fog_far_brightness", 1.0f);
@@ -487,7 +493,14 @@ local:
   // features about 'variation size' across (2D noise over the ground, drifting with the noise
   // wind), so seen edge-on far away the layer's top is broken into banks and strata instead of a
   // level line. 0: one level top (as before).
-  float fogTopAt(float3 p)
+  // The fog top variation's amplitude at distance t: grows by 'variation with distance' per km, so
+  // banks far away (where a few hundred metres is a pixel or two) still show.
+  float topVarAt(float t)
+  {
+    return max(fogTopVar, 0.0f) * (1.0f + max(fogTopVarDist, 0.0f) * t / 1000.0f);
+  }
+
+  float fogTopAt(float3 p, float t)
   {
     if (fogTopVar <= 0.0f)
       return fogTop;
@@ -501,15 +514,37 @@ local:
       amp *= 0.5f;
     }
     float n = clamp(0.5f + (sum / norm - 0.5f) * 2.0f, 0.0f, 1.0f);
-    return fogTop + fogTopVar * (2.0f * n - 1.0f);
+    return fogTop + topVarAt(t) * (2.0f * n - 1.0f);
   }
 
   float fogProfile(float3 p, float t)
   {
     float y = p.y + curveLift(t);
     float soft = fogSoftness + fogSoften * t;
-    float edge = clamp((y - fogTopAt(p)) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
-    return fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
+    float edge = clamp((y - fogTopAt(p, t)) / max(soft, 1.0f) + 0.5f, 0.0f, 1.0f);
+    float d = fogDensity * (1.0f - edge * edge * (3.0f - 2.0f * edge));
+    // Fog top erosion: inside the top's falloff (peaking half way through it) finer noise eats the
+    // density away, so the top breaks into banks and wisps instead of a smooth edge. Octaves smaller
+    // than about 0.3% of the distance (a pixel or two) are skipped, so far fog does not alias.
+    if (fogErosion > 0.0f && d > 0.0f) {
+      float w = 4.0f * edge * (1.0f - edge);
+      if (w > 0.0f) {
+        float3 q = (p - noiseWind * noiseTime) / max(fogErosionSize, 1.0f);
+        float sum = 0.0f, amp = 0.5f, norm = 0.0f, size = fogErosionSize;
+        for (int i = 0; i < 3; i++) {
+          if (size >= 0.003f * t || i == 0) {
+            sum += amp * vnoise3(q);
+            norm += amp;
+          }
+          q = float3(q.x * 2.03f + 1.7f, q.y * 2.03f + 9.2f, q.z * 2.03f + 4.1f);
+          amp *= 0.5f;
+          size *= 0.5f;
+        }
+        float n = clamp(0.5f + (sum / max(norm, 1e-6f) - 0.5f) * 2.0f, 0.0f, 1.0f);
+        d *= 1.0f - clamp(fogErosion, 0.0f, 1.0f) * w * n;
+      }
+    }
+    return d;
   }
 
   // Integral of exp(-c * t / H) for t from s to d: the optical length of the ray
@@ -766,7 +801,7 @@ local:
     bool skyFog = false;
     if (sky && hazeSky == 0 && fogHorizon != 0 && volumetric != 0 && fogDensity > 0.0f) {
       float a = 1.0f / (2.0f * 6371000.0f * 7.0f / 6.0f);
-      float ceil0 = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness, 1.0f);
+      float ceil0 = fogTop + topVarAt(600000.0f) + 0.5f * max(fogSoftness, 1.0f);
       for (int it = 0; it < 2; it++) {
         float c = origin.y - ceil0;
         float disc = dir.y * dir.y - 4.0f * a * c;
@@ -781,7 +816,7 @@ local:
         s = tIn;
         dist = tOut;
         // The top softens with distance: widen the layer to the ceiling at the far end and redo.
-        ceil0 = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness + fogSoften * tOut, 1.0f);
+        ceil0 = fogTop + topVarAt(tOut) + 0.5f * max(fogSoftness + fogSoften * tOut, 1.0f);
       }
       if (!skyFog) {
         s = 0.0f;
@@ -848,7 +883,7 @@ local:
       // Fog sits in a thin layer, and far steps are long: split a step that reaches into the
       // fog into sub-steps about half the fog's softness long (up to 8), so beams crossing it
       // stay smooth instead of aliasing into a comb.
-      float fogCeiling = fogTop + max(fogTopVar, 0.0f) + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
+      float fogCeiling = fogTop + topVarAt(dist) + 0.5f * max(fogSoftness + fogSoften * dist, 1.0f);
       // The curved earth lifts every point of the ray above the fog (curveLift >= 0), so the
       // flat heights below are a safe lower bound for the sub-step test.
       float fogStep = max(0.5f * fogSoftness, 10.0f);
