@@ -48,6 +48,21 @@ PRESETS = [
         # far too warm; kept, 29%).
         "keep": ("haze_amount", "haze_start", "fog_top"),
     }),
+    ("Aerial Day", {
+        # From high above on a fair-weather day: Aerial Sunset's set-up (haze matched to the plate's
+        # sky, two-layer height model, haze from 3 km) with Clear Day's white light and no fog. A
+        # starting point for EzMatch's match all; pair it with EzAtmosScatter's and EzCloudGen's
+        # 'Aerial Day' looks (planner r19 GUESS, tuned once on our demo fair-weather render).
+        "suggested_sun": "mid, 10-20 degrees; white, full strength",
+        "sun": {"elevation": 15.0, "azimuth": 40.0, "color": [1.0, 1.0, 1.0]},
+        "knobs": {"haze_mode": 1, "haze_amount": 0.3, "match_horizon": True, "match_to": 1, "height_model": 1,
+                  "haze_start": 3000.0, "haze_tint": [1.0, 1.0, 1.0], "sun_scatter": 1.0, "sky_scatter": 1.0,
+                  "shadow_strength": 1.0, "shadow_fill": [0.0, 0.0, 0.0], "fog_density": 0.0,
+                  "noise_amount": 0.2, "noise_size": 4000.0, "noise_stretch": 3.0, "cloud_cover": 0.0},
+        "fog_below_camera": None,
+        # Kept as tuned, not fitted (as Aerial Sunset: fitted, a camera km up gets far too little haze).
+        "keep": ("haze_amount", "haze_start"),
+    }),
     ("Valley Fog", {
         "suggested_sun": "low morning sun, 8-15 degrees; slightly warm",
         "sun": {"elevation": 10.0, "azimuth": -30.0, "color": [1.0, 0.92, 0.85]},
