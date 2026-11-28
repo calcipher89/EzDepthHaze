@@ -426,7 +426,7 @@ def fit(n, name=None):
         knobs["fog_density"] = preset["knobs"]["fog_density"] / scale
     if "fog_softness" in knobs:
         knobs["fog_softness"] = preset["knobs"]["fog_softness"] * relief
-    for k in ("noise_size", "cloud_size", "cloud_breakup_size"):
+    for k in ("noise_size", "cloud_size", "cloud_breakup_size", "haze_start"):
         if k in knobs:
             knobs[k] = preset["knobs"][k] * scale
     for k in knobs:
