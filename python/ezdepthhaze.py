@@ -28,6 +28,26 @@ PRESETS = [
                   "sun_scatter": 1.4, "sky_scatter": 1.0, "shadow_strength": 1.0, "shadow_fill": [0.0, 0.0, 0.0], "cloud_cover": 0.0},
         "fog_below_camera": 2500.0,
     }),
+    ("Aerial Sunset", {
+        # From high above (an aerial or a summit, the camera km over the land) toward a low sun:
+        # the Rocky sunset look (r27), as a starting point for EzMatch's match all. Pair it with
+        # EzAtmosScatter's 'Aerial Sunset' look (thicker, taller haze).
+        "suggested_sun": "very low, 1-5 degrees, in front of the camera; warm",
+        "sun": {"elevation": 3.0, "azimuth": -10.0, "color": [1.0, 0.72, 0.5]},
+        "knobs": {"haze_mode": 1, "haze_amount": 0.3, "match_horizon": True, "match_to": 1, "height_model": 1,
+                  "haze_start": 3000.0, "haze_tint": [0.97, 1.05, 0.97],
+                  "sun_scatter": 0.95, "sun_scatter_color": [1.25, 0.95, 0.6], "sky_scatter": 1.0,
+                  "sky_light_from": 1, "sky_light_color": [0.7, 0.86, 0.9], "sky_tint": 0.25,
+                  "shadow_strength": 0.6, "penumbra": 1.5, "shadow_fill": [0.0, 0.0, 0.0],
+                  "fog_density": 0.1, "fog_softness": 400.0,
+                  "noise_amount": 0.7, "noise_on_haze": 1.0, "noise_size": 8000.0, "noise_stretch": 15.0,
+                  "noise_sharpness": 2.0, "cloud_cover": 0.0},
+        # A thin fog in the far valleys, its top about 1.6 km under the camera.
+        "fog_below_camera": 1600.0,
+        # Kept as tuned, not fitted (EzMatch acceptance 2, r17: fitted, the haze read 76% off,
+        # far too warm; kept, 29%).
+        "keep": ("haze_amount", "haze_start", "fog_top"),
+    }),
     ("Valley Fog", {
         "suggested_sun": "low morning sun, 8-15 degrees; slightly warm",
         "sun": {"elevation": 10.0, "azimuth": -30.0, "color": [1.0, 0.92, 0.85]},

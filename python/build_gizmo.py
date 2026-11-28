@@ -22,7 +22,7 @@ import ezdepthhaze  # noqa: E402  (preset names)
 import layout_hints  # noqa: E402
 import node_layout  # noqa: E402
 # Shown on the node; bump it with each tagged release.
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 BLINK = os.path.join(ROOT, "blink")
 GIZMO_PATH = os.path.join(ROOT, "gizmos", "EzDepthHaze.gizmo")
 
@@ -198,6 +198,7 @@ def _tool_code(defaults, advanced_knobs=()):
     Python module at run time. python/ezdepthhaze.py is where the values are edited."""
     presets = dict((name, {"knobs": p["knobs"], "fog_below_camera": p["fog_below_camera"],
                            "cloud_above_camera": p.get("cloud_above_camera"),
+                           "keep": list(p.get("keep") or ()),
                            "suggested_sun": p["suggested_sun"], "sun": p["sun"]})
                    for name, p in ezdepthhaze.PRESETS)
     # Every knob that makes the look: all of the Advanced tab's (bar the plate set-up, passed in
