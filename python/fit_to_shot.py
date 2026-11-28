@@ -429,9 +429,17 @@ def fit(n, name=None):
     for k in ("noise_size", "cloud_size", "cloud_breakup_size", "haze_start"):
         if k in knobs:
             knobs[k] = preset["knobs"][k] * scale
+    # A preset may keep some values as tuned ('keep'): the fit leaves them alone, and a kept
+    # fog_top stays fog_below_camera under this shot's camera (not placed on the demo's terrain).
+    keep = preset.get("keep") or ()
+    for k in keep:
+        if k in preset["knobs"]:
+            knobs[k] = preset["knobs"][k]
     for k in knobs:
         n[k].setValue(knobs[k])
-    if preset["fog_below_camera"] is not None:
+    if preset["fog_below_camera"] is not None and "fog_top" in keep:
+        n["fog_top"].setValue(round(st["camera"] - preset["fog_below_camera"], 1))
+    elif preset["fog_below_camera"] is not None:
         fog_top = _place(ref["camera"] - preset["fog_below_camera"], ref["alt"], st["alt"])
         n["fog_top"].setValue(round(fog_top, 1))
     if preset.get("cloud_above_camera"):

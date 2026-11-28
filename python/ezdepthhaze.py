@@ -44,6 +44,9 @@ PRESETS = [
                   "noise_sharpness": 2.0, "cloud_cover": 0.0},
         # A thin fog in the far valleys, its top about 1.6 km under the camera.
         "fog_below_camera": 1600.0,
+        # Kept as tuned, not fitted (EzMatch acceptance 2, r17: fitted, the haze read 76% off,
+        # far too warm; kept, 29%).
+        "keep": ("haze_amount", "haze_start", "fog_top"),
     }),
     ("Valley Fog", {
         "suggested_sun": "low morning sun, 8-15 degrees; slightly warm",
